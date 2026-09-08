@@ -1,10 +1,5 @@
--- PITCHAT — SNAPSHOT / DOCUMENTAÇÃO, NÃO É FONTE DE VERDADE.
--- A fonte de verdade são os arquivos numerados em supabase/migrations/
--- (aplicados via `supabase db push`). Este arquivo existe só pra dar uma
--- visão de leitura rápida do schema completo — regenerar com
--- `supabase db dump --linked -f supabase/schema.sql` depois de cada migration
--- nova em vez de editar à mão. Ver supabase/README.md.
---
+-- PITCHAT — migration 0001: schema inicial (Fase 1: fundação)
+-- Aplicada via `supabase db push` (fonte de verdade — ver supabase/README.md).
 -- Convenções: uuid PK (gen_random_uuid()), timestamptz, workspace_id em toda tabela
 -- de domínio, RLS habilitado em tudo (service_role do backend ignora RLS, mas os
 -- handlers ainda precisam filtrar por workspace_id manualmente — ver
@@ -559,34 +554,3 @@ create policy links_by_workspace on links
 create policy audit_logs_by_workspace on audit_logs
   for all using (is_workspace_member(workspace_id))
   with check (is_workspace_member(workspace_id));
-
--- ============================================================================
--- 14. STORAGE (bucket privado da Media Library — ver migration 0002)
--- ============================================================================
-
-values ('media', 'media', false)
-on conflict (id) do nothing;
-
--- Extrai o workspace_id do primeiro segmento do path do objeto.
--- Retorna null (nunca dá match em is_workspace_member) se o path não for um uuid válido,
--- em vez de estourar erro.
-create or replace function storage_object_workspace_id(object_name text)
-returns uuid
-language sql
-immutable
-as $$
-  select case
-    when (storage.foldername(object_name))[1] ~*
-      '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-    then (storage.foldername(object_name))[1]::uuid
-    else null
-  end;
-$$;
-
-create policy media_bucket_by_workspace on storage.objects
-  for all using (
-    bucket_id = 'media' and is_workspace_member(storage_object_workspace_id(name))
-  )
-  with check (
-    bucket_id = 'media' and is_workspace_member(storage_object_workspace_id(name))
-  );

@@ -3,13 +3,22 @@
 Projeto **exclusivo** do PITCHAT. Não reutilizar o projeto Supabase do PitBrain — nenhuma tabela,
 secret, Auth ou Storage é compartilhado entre os dois produtos.
 
-## Setup
+**Fonte de verdade do schema: `supabase/migrations/*.sql`** (aplicadas via Supabase CLI).
+`schema.sql` é só um snapshot de leitura — nunca editar à mão, regenerar com
+`supabase db dump --linked -f supabase/schema.sql` depois de cada migration nova.
+
+## Setup (primeira vez)
 
 1. Crie um projeto novo em [supabase.com](https://supabase.com) (nome sugerido: `pitchat`).
-2. Copie **Project URL** → `NEXT_PUBLIC_SUPABASE_URL`.
-3. Copie a **anon key** → `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
-4. Copie a **service_role key** (secreta) → `SUPABASE_SERVICE_ROLE_KEY`.
-5. Rode `schema.sql` inteiro no **SQL Editor** do projeto.
+2. Copie **Project URL** → `NEXT_PUBLIC_SUPABASE_URL`, **anon key** → `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
+   **service_role key** (secreta) → `SUPABASE_SERVICE_ROLE_KEY`. Cole tudo em `.env.local`
+   (nunca em `.env.example`, docs ou Git).
+3. Autentique o CLI: `npx supabase login` (abre o navegador, você aprova — não dá pra automatizar isso).
+4. Link o projeto local ao remoto: `npx supabase link --project-ref <PROJECT_REF>`
+   — o Project Ref está na URL do dashboard (`supabase.com/dashboard/project/<ref>`) ou em
+   Settings → General → Reference ID. O comando vai pedir a senha do Postgres do projeto
+   (definida na criação, resetável em Settings → Database → Reset database password).
+5. Aplique as migrations: `npx supabase db push --linked`.
 6. Crie seu usuário em **Authentication → Users → Add user** (defina senha lá).
 7. Adicione seu e-mail em `PITCHAT_ALLOWED_EMAILS` no `.env.local`.
 8. Crie manualmente seu workspace inicial e sua membership (ainda não existe UI pra isso na Fase 1):
@@ -22,9 +31,30 @@ secret, Auth ou Storage é compartilhado entre os dois produtos.
 
 9. `npm run dev`, acesse `/login`.
 
-## Migrations
+## Workflow de migrations (a partir de agora)
 
-Enquanto o projeto é pequeno, `schema.sql` é a fonte de verdade (idempotente via `create table if not exists`).
-A partir da Fase 2, mudanças de schema passam a ser arquivos numerados em `supabase/migrations/`
-(`0001_...sql`, `0002_...sql`) em vez de editar `schema.sql` direto — nunca alterar schema em produção
-sem migration versionada (ver docs/PITCHAT_ARCHITECTURE.md §10).
+```bash
+# criar uma migration nova (gera supabase/migrations/<timestamp>_<nome>.sql vazio)
+npx supabase migration new nome_da_mudanca
+
+# editar o arquivo gerado, depois aplicar no projeto linkado
+npx supabase db push --linked
+
+# conferir o que já foi aplicado vs. o que falta
+npx supabase migration list --linked
+
+# regenerar o snapshot de leitura depois de aplicar
+npx supabase db dump --linked -f supabase/schema.sql
+```
+
+Nunca editar `schema.sql` diretamente esperando que isso mude o banco — ele não é lido por
+nenhum comando de deploy, é só documentação. Nunca alterar uma tabela em produção fora de uma
+migration versionada.
+
+## Migrations existentes
+
+- `0001_init` — schema completo da Fase 1 (workspaces, profiles, social_accounts, contacts/
+  conversations/messages/comments, automations versionadas + runs/steps, tags, custom fields,
+  webhook_events, jobs, media library, links, audit_logs) com RLS por workspace em tudo.
+- `0002_media_storage_bucket` — bucket privado `media` (Storage) para a Fase 2, com policy de
+  isolamento por workspace baseada no primeiro segmento do path do objeto.
