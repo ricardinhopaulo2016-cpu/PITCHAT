@@ -79,11 +79,12 @@ if (!accessToken) {
   process.exit(1);
 }
 
-// `link` e `db push`/`db pull` precisam da senha do Postgres pra conexão direta.
-// Injeta --password automaticamente se o comando pedir e o caller não passou
-// --password/-p explicitamente, sem nunca imprimir o valor.
-const needsDbPassword =
-  args[0] === "link" || (args[0] === "db" && ["push", "pull", "diff"].includes(args[1]));
+// `link`, `db *` e `migration *` (list/repair/...) aceitam --password pra
+// conexão direta com o Postgres. Mais simples e seguro injetar sempre que o
+// comando é de uma dessas famílias do que manter uma lista exaustiva de
+// subcomandos — sobra um --password ignorado em quem não usa, não falta em
+// quem usa. Nunca sobrescreve se o caller já passou --password/-p.
+const needsDbPassword = ["link", "db", "migration"].includes(args[0]);
 const alreadyHasPasswordFlag = args.includes("--password") || args.includes("-p");
 
 const finalArgs = [...args];

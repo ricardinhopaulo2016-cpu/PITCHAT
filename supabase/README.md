@@ -87,8 +87,13 @@ npm run supabase -- db push
 # conferir o que já foi aplicado vs. o que falta
 npm run supabase -- migration list --linked
 
-# regenerar o snapshot de leitura depois de aplicar
-npm run supabase -- db dump --linked -f supabase/schema.sql
+# regenerar o snapshot de leitura depois de aplicar — precisa de Docker/Podman
+# instalado e no PATH (o CLI roda pg_dump num container). Se não tiver Docker
+# disponível (ex: este ambiente de agente), pule este passo — schema.sql fica
+# desatualizado mas as migrations continuam sendo a fonte de verdade real.
+# IMPORTANTE: o comando trunca o arquivo de destino ANTES de checar se o
+# Docker existe — se falhar, `git checkout -- supabase/schema.sql` restaura.
+npm run supabase -- db dump --linked -f /tmp/schema-dump.sql && cp /tmp/schema-dump.sql supabase/schema.sql
 ```
 
 Nunca editar `schema.sql` diretamente esperando que isso mude o banco — ele não é lido por
