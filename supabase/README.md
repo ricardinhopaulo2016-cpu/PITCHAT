@@ -5,7 +5,7 @@ secret, Auth ou Storage é compartilhado entre os dois produtos.
 
 **Fonte de verdade do schema: `supabase/migrations/*.sql`** (aplicadas via Supabase CLI).
 `schema.sql` é só um snapshot de leitura — nunca editar à mão, regenerar com
-`supabase db dump --linked -f supabase/schema.sql` depois de cada migration nova.
+`npm run supabase -- db dump --linked -f supabase/schema.sql` depois de cada migration nova.
 
 ## Setup (primeira vez)
 
@@ -16,15 +16,17 @@ secret, Auth ou Storage é compartilhado entre os dois produtos.
    - `NEXT_PUBLIC_SUPABASE_URL` e `SUPABASE_URL` → a Project URL (mesmo valor nas duas)
    - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` → a Publishable key
    - `SUPABASE_SECRET_KEY` → a Secret key (nunca em `.env.example`, docs, migration ou Git)
-3. Autentique o CLI: `npx supabase login` (abre o navegador, você aprova — não dá pra automatizar isso).
-4. Link o projeto local ao remoto: `npx supabase link --project-ref <PROJECT_REF>`
-   — o Project Ref está na URL do dashboard (`supabase.com/dashboard/project/<ref>`) ou em
-   Settings → General → Reference ID. O comando vai pedir a senha do Postgres do projeto
-   (definida na criação, resetável em Settings → Database → Reset database password).
-5. Aplique as migrations: `npx supabase db push --linked`.
-6. Crie seu usuário em **Authentication → Users → Add user** (defina senha lá).
-7. Adicione seu e-mail em `PITCHAT_ALLOWED_EMAILS` no `.env.local`.
-8. Crie manualmente seu workspace inicial e sua membership (ainda não existe UI pra isso na Fase 1):
+3. Autentique e linke o CLI — ver "Autenticação não-interativa do CLI" abaixo (necessário
+   sempre que o shell não for um terminal interativo de verdade, ex: agente/CI):
+   ```bash
+   npm run supabase -- projects list
+   npm run supabase -- link --project-ref rvkyslzkzzyhxbjwxdyx
+   ```
+4. Aplique as migrations: `npm run supabase -- db push --dry-run` (revisa antes) e depois
+   `npm run supabase -- db push`.
+5. Crie seu usuário em **Authentication → Users → Add user** (defina senha lá).
+6. Adicione seu e-mail em `PITCHAT_ALLOWED_EMAILS` no `.env.local`.
+7. Crie manualmente seu workspace inicial e sua membership (ainda não existe UI pra isso na Fase 1):
 
    ```sql
    insert into workspaces (name, slug) values ('Minha Empresa', 'minha-empresa') returning id;
@@ -32,22 +34,61 @@ secret, Auth ou Storage é compartilhado entre os dois produtos.
    insert into workspace_members (workspace_id, user_id, role) values ('<workspace_id>', '<seu_user_id>', 'owner');
    ```
 
-9. `npm run dev`, acesse `/login`.
+8. `npm run dev`, acesse `/login`.
+
+## Autenticação não-interativa do CLI
+
+`supabase login` abre um navegador e espera você aprovar — não funciona em shell não-TTY
+(agente, CI, etc: o próprio CLI recusa com `Cannot use automatic login flow inside
+non-TTY environments`). A alternativa oficialmente suportada é autenticação por variável
+de ambiente, que é o que `scripts/supabase-cli.mjs` automatiza.
+
+**As 3 credenciais deste projeto são coisas diferentes — não confundir:**
+
+| Variável | O que é | Onde usa |
+|---|---|---|
+| `SUPABASE_SECRET_KEY` | Credencial server-side da **aplicação** PITCHAT | `lib/supabase/admin.ts` (runtime) |
+| `SUPABASE_ACCESS_TOKEN` | Personal Access Token da **sua conta** Supabase | Só o CLI (Management API) |
+| `SUPABASE_DB_PASSWORD` | Senha do **Postgres deste projeto** | Só o CLI (`link`, `db push`) |
+
+Onde conseguir as duas que faltam pro CLI:
+- `SUPABASE_ACCESS_TOKEN` → https://supabase.com/dashboard/account/tokens (criar um novo)
+- `SUPABASE_DB_PASSWORD` → dentro do projeto, Settings → Database → Reset database password
+  (se você não guardou a senha definida na criação)
+
+Cole os dois em `.env.local` (`SUPABASE_ACCESS_TOKEN=` e `SUPABASE_DB_PASSWORD=`) — nunca em
+`.env.example`, docs, migration ou código. `.env.local` já está no `.gitignore`.
+
+**Uso** (o script carrega as duas variáveis de `.env.local`, nunca imprime os valores, e
+injeta `--password` automaticamente em `link`/`db push`/`db pull`/`db diff`):
+
+```bash
+npm run supabase -- projects list                          # read-only, confirma que autenticou
+npm run supabase -- link --project-ref rvkyslzkzzyhxbjwxdyx
+npm run supabase -- db push --dry-run                       # sempre revisar antes
+npm run supabase -- db push
+npm run supabase -- migration list --linked
+```
+
+(O `--` depois de `supabase` é necessário pro npm repassar os argumentos seguintes pro
+script em vez de tentar interpretá-los como flags do próprio `npm run`.)
 
 ## Workflow de migrations (a partir de agora)
 
 ```bash
-# criar uma migration nova (gera supabase/migrations/<timestamp>_<nome>.sql vazio)
+# criar uma migration nova (só cria o arquivo local, não toca na rede — não
+# precisa do wrapper com token/senha)
 npx supabase migration new nome_da_mudanca
 
-# editar o arquivo gerado, depois aplicar no projeto linkado
-npx supabase db push --linked
+# editar o arquivo gerado, revisar o que vai ser aplicado, depois aplicar
+npm run supabase -- db push --dry-run
+npm run supabase -- db push
 
 # conferir o que já foi aplicado vs. o que falta
-npx supabase migration list --linked
+npm run supabase -- migration list --linked
 
 # regenerar o snapshot de leitura depois de aplicar
-npx supabase db dump --linked -f supabase/schema.sql
+npm run supabase -- db dump --linked -f supabase/schema.sql
 ```
 
 Nunca editar `schema.sql` diretamente esperando que isso mude o banco — ele não é lido por
@@ -61,3 +102,6 @@ migration versionada.
   webhook_events, jobs, media library, links, audit_logs) com RLS por workspace em tudo.
 - `0002_media_storage_bucket` — bucket privado `media` (Storage) para a Fase 2, com policy de
   isolamento por workspace baseada no primeiro segmento do path do objeto.
+- `0003_media_processing_state` — estado de processamento do pipeline de ingest da Media
+  Library (`status`/`processing_error`/`uploaded_by` em `media_assets`; `sha256` vira opcional
+  com índice único parcial só para `status='ready'`).
