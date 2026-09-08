@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { getCurrentWorkspace } from "@/lib/workspace";
@@ -22,10 +23,17 @@ export default async function DashboardPage() {
       </div>
 
       {workspace ? (
-        <p>
-          Logado como <strong>{user.email}</strong> no workspace{" "}
-          <strong>{workspace.name}</strong>.
-        </p>
+        <>
+          <p>
+            Logado como <strong>{user.email}</strong> no workspace{" "}
+            <strong>{workspace.name}</strong>.
+          </p>
+          <p className="mt-4">
+            <Link href="/dashboard/media" className="underline">
+              Media Library →
+            </Link>
+          </p>
+        </>
       ) : (
         <p className="text-sm opacity-80">
           Seu usuário ({user.email}) ainda não pertence a nenhum workspace. Crie um
