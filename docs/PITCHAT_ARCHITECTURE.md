@@ -19,6 +19,26 @@ PITCHAT é a plataforma interna para centralizar automação de Instagram (estil
 | Fila / Delay / Retry | **Upstash QStash** | Vercel é serverless — não segura `setTimeout` de minutos. QStash é fila HTTP gerenciada com delay e retry nativos, sem precisar manter um worker sempre ligado |
 | Testes | Vitest | Leve, roda bem em TS/ESM sem config extra |
 
+### Supabase — novo modelo de API keys (decidido 08/09/2026)
+
+Supabase está descontinuando as keys legadas `anon`/`service_role` (JWT) em favor de
+`sb_publishable_...` / `sb_secret_...` (ver [changelog oficial](https://supabase.com/changelog/29260-upcoming-changes-to-supabase-api-keys)
+e [guia de migração](https://supabase.com/docs/guides/getting-started/migrating-to-new-api-keys)).
+Client libraries (`@supabase/supabase-js`, `@supabase/ssr`) aceitam as novas keys sem
+mudança de versão — é troca de valor, não de código de integração. PITCHAT já nasce
+nesse padrão, com nomes de env explícitos (nunca os legados):
+
+| Variável | Onde é usada | Conteúdo |
+|---|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | Browser (`lib/supabase/browser.ts`) | Project URL |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Browser + server agindo como o usuário logado (`browser.ts`, `server.ts`, `middleware.ts`) | `sb_publishable_...` |
+| `SUPABASE_URL` | Server-only (`server.ts`, `middleware.ts`, `admin.ts`) | Mesma Project URL, em nome sem `NEXT_PUBLIC_` |
+| `SUPABASE_SECRET_KEY` | Server-only, só `admin.ts` (`getSupabaseAdminClient`) | `sb_secret_...` — bypassa RLS, nunca no bundle do browser |
+
+`lib/supabase/admin.ts` importa o pacote `server-only` — qualquer import acidental
+desse arquivo a partir de um Client Component quebra o build, em vez de vazar a
+secret key silenciosamente pro bundle do navegador.
+
 ### Por que QStash em vez de fila em Postgres
 
 Avaliamos "tabela de jobs + Vercel Cron" (zero infra nova) vs QStash (infra gerenciada extra). O usuário escolheu QStash explicitamente. Trade-off registrado: QStash exige uma conta Upstash e um novo secret (`QSTASH_TOKEN`, `QSTASH_CURRENT_SIGNING_KEY`, `QSTASH_NEXT_SIGNING_KEY`), mas dá delay/retry/backoff nativos via HTTP callback assinado — sem precisar implementar poller nem lidar com `SELECT ... FOR UPDATE SKIP LOCKED`.

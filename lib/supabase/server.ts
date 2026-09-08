@@ -2,19 +2,23 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
 /**
- * Cookie-bound client for Server Components / Route Handlers — anon key,
- * carries the current request's session so `auth.getUser()` and RLS work.
- * Returns null if Supabase isn't configured.
+ * Cookie-bound client for Server Components / Route Handlers — publishable
+ * key (not the secret key — this client acts AS the logged-in user, RLS
+ * still applies), carries the current request's session so `auth.getUser()`
+ * and RLS work. Returns null if Supabase isn't configured.
+ *
+ * Note: uses `SUPABASE_URL` (server-only var name), not the `NEXT_PUBLIC_`
+ * one — same value, but this file never runs in the browser.
  */
 export async function getSupabaseServerClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabasePublishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
-  if (!supabaseUrl || !supabaseAnonKey) return null;
+  if (!supabaseUrl || !supabasePublishableKey) return null;
 
   const cookieStore = await cookies();
 
-  return createServerClient(supabaseUrl, supabaseAnonKey, {
+  return createServerClient(supabaseUrl, supabasePublishableKey, {
     cookies: {
       getAll() {
         return cookieStore.getAll();

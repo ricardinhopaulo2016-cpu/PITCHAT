@@ -1,61 +1,46 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import "server-only";
 
-let cachedClient: SupabaseClient | null | undefined;
 let cachedAdminClient: SupabaseClient | null | undefined;
 
 /**
- * Public, anon-key client. Safe client-side or server-side, but has no
- * session attached — use lib/supabase/server.ts or lib/supabase/browser.ts
- * instead when you need the logged-in user's session (RLS-aware).
- */
-export function getSupabaseClient(): SupabaseClient | null {
-  if (cachedClient !== undefined) return cachedClient;
-
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!supabaseUrl || !supabaseAnonKey) {
-    cachedClient = null;
-    return cachedClient;
-  }
-
-  cachedClient = createClient(supabaseUrl, supabaseAnonKey);
-  return cachedClient;
-}
-
-/**
- * Privileged, service-role client. Server-side only — throws if called in the
- * browser, because the service role key must never reach client bundles.
+ * Privileged, secret-key client. Imports "server-only" so any accidental
+ * import from a Client Component fails the build instead of leaking the
+ * secret key into the browser bundle — belt-and-suspenders on top of the
+ * `typeof window` check below.
+ *
  * Bypasses RLS: every handler that uses this MUST validate workspace_id
- * itself (see docs/PITCHAT_ARCHITECTURE.md §4 — RLS here is defense in depth,
- * not the only barrier).
+ * itself (see docs/PITCHAT_ARCHITECTURE.md §4 — RLS here is defense in
+ * depth, not the only barrier).
+ *
+ * Uses Supabase's new key format (`sb_secret_...`) — see
+ * docs/PITCHAT_ARCHITECTURE.md §2 for why we're on SUPABASE_URL /
+ * SUPABASE_SECRET_KEY instead of the legacy SUPABASE_SERVICE_ROLE_KEY name.
  */
 export function getSupabaseAdminClient(): SupabaseClient | null {
   if (typeof window !== "undefined") {
     throw new Error(
-      "getSupabaseAdminClient() cannot be called in the browser — it would expose the service role key."
+      "getSupabaseAdminClient() cannot be called in the browser — it would expose the secret key."
     );
   }
 
   if (cachedAdminClient !== undefined) return cachedAdminClient;
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseSecretKey = process.env.SUPABASE_SECRET_KEY;
 
-  if (!supabaseUrl || !supabaseServiceKey) {
+  if (!supabaseUrl || !supabaseSecretKey) {
     cachedAdminClient = null;
     return cachedAdminClient;
   }
 
-  cachedAdminClient = createClient(supabaseUrl, supabaseServiceKey, {
+  cachedAdminClient = createClient(supabaseUrl, supabaseSecretKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
   return cachedAdminClient;
 }
 
-/** True when Supabase (URL + service role key) is fully configured server-side. */
+/** True when Supabase (URL + secret key) is fully configured server-side. */
 export function isSupabaseConfigured(): boolean {
-  return (
-    !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.SUPABASE_SERVICE_ROLE_KEY
-  );
+  return !!process.env.SUPABASE_URL && !!process.env.SUPABASE_SECRET_KEY;
 }

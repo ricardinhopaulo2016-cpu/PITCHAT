@@ -10,9 +10,12 @@ secret, Auth ou Storage é compartilhado entre os dois produtos.
 ## Setup (primeira vez)
 
 1. Crie um projeto novo em [supabase.com](https://supabase.com) (nome sugerido: `pitchat`).
-2. Copie **Project URL** → `NEXT_PUBLIC_SUPABASE_URL`, **anon key** → `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
-   **service_role key** (secreta) → `SUPABASE_SERVICE_ROLE_KEY`. Cole tudo em `.env.local`
-   (nunca em `.env.example`, docs ou Git).
+2. Nas API settings do projeto, use o **novo modelo de keys** do Supabase (não o legado
+   anon/service_role): copie a **Publishable key** (`sb_publishable_...`) e a **Secret key**
+   (`sb_secret_...`). Preencha `.env.local`:
+   - `NEXT_PUBLIC_SUPABASE_URL` e `SUPABASE_URL` → a Project URL (mesmo valor nas duas)
+   - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` → a Publishable key
+   - `SUPABASE_SECRET_KEY` → a Secret key (nunca em `.env.example`, docs, migration ou Git)
 3. Autentique o CLI: `npx supabase login` (abre o navegador, você aprova — não dá pra automatizar isso).
 4. Link o projeto local ao remoto: `npx supabase link --project-ref <PROJECT_REF>`
    — o Project Ref está na URL do dashboard (`supabase.com/dashboard/project/<ref>`) ou em
