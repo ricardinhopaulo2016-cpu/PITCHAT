@@ -3,6 +3,10 @@ import { notFound, redirect } from "next/navigation";
 import { getAuthContext } from "@/lib/auth/session";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { formatBytes, formatDurationMs, formatResolution } from "@/lib/media/format";
+import { mediaStatusLabel } from "@/lib/media/status-label";
+import { friendlyUploadError } from "@/lib/media/error-messages";
+
+const PREVIEW_TTL_SECONDS = 600;
 
 type MediaAssetDetail = {
   id: string;
@@ -19,8 +23,17 @@ type MediaAssetDetail = {
   codec: string | null;
   bitrate: number | null;
   has_audio: boolean | null;
-  processing_error: unknown;
+  source_type: string;
+  processing_error: { reason?: string } | null;
   created_at: string;
+};
+
+type MediaUsageRow = {
+  id: string;
+  platform: string;
+  context: string | null;
+  used_at: string;
+  profile: { name: string } | null;
 };
 
 export default async function MediaAssetDetailPage({
@@ -39,7 +52,7 @@ export default async function MediaAssetDetailPage({
   const { data: asset } = await admin
     .from("media_assets")
     .select(
-      "id, original_filename, storage_key, status, sha256, file_size, mime_type, duration_ms, width, height, fps, codec, bitrate, has_audio, processing_error, created_at"
+      "id, original_filename, storage_key, status, sha256, file_size, mime_type, duration_ms, width, height, fps, codec, bitrate, has_audio, source_type, processing_error, created_at"
     )
     .eq("id", id)
     .eq("workspace_id", auth.workspace.id) // nunca confia só no id da URL
@@ -47,20 +60,36 @@ export default async function MediaAssetDetailPage({
 
   if (!asset) notFound();
 
+  const { data: usage } = await admin
+    .from("media_usage")
+    .select("id, platform, context, used_at, profile:profiles(name)")
+    .eq("media_asset_id", asset.id)
+    .order("used_at", { ascending: false })
+    .returns<MediaUsageRow[]>();
+
+  let previewUrl: string | null = null;
+  if (asset.status === "ready") {
+    const { data: signed } = await admin.storage
+      .from("media")
+      .createSignedUrl(asset.storage_key, PREVIEW_TTL_SECONDS);
+    previewUrl = signed?.signedUrl ?? null;
+  }
+
+  const isImage = asset.mime_type?.startsWith("image/");
+  const isVideo = asset.mime_type?.startsWith("video/");
+
   const fields: [string, string][] = [
-    ["Status", asset.status],
-    ["Nome original", asset.original_filename ?? "—"],
-    ["MIME real (magic bytes)", asset.mime_type ?? "—"],
-    ["SHA-256", asset.sha256 ?? "—"],
-    ["Tamanho", formatBytes(asset.file_size)],
+    ["Status", mediaStatusLabel(asset.status)],
     ["Duração", formatDurationMs(asset.duration_ms)],
     ["Resolução", formatResolution(asset.width, asset.height)],
     ["FPS", asset.fps?.toString() ?? "—"],
     ["Codec", asset.codec ?? "—"],
     ["Bitrate", asset.bitrate ? `${Math.round(asset.bitrate / 1000)} kbps` : "—"],
     ["Áudio", asset.has_audio == null ? "—" : asset.has_audio ? "Sim" : "Não"],
-    ["Storage key", asset.storage_key],
-    ["Enviado em", new Date(asset.created_at).toLocaleString("pt-BR")],
+    ["Tamanho", formatBytes(asset.file_size)],
+    ["MIME", asset.mime_type ?? "—"],
+    ["Data de entrada", new Date(asset.created_at).toLocaleString("pt-BR")],
+    ["Origem", asset.source_type === "google_drive" ? "Google Drive" : "Upload"],
   ];
 
   return (
@@ -69,9 +98,27 @@ export default async function MediaAssetDetailPage({
         ← Media Library
       </Link>
 
-      <h1 className="mb-6 mt-2 text-2xl font-semibold break-all">
+      <h1 className="mb-4 mt-2 text-2xl font-semibold break-all">
         {asset.original_filename ?? asset.id}
       </h1>
+
+      {previewUrl && isImage && (
+        // eslint-disable-next-line @next/next/no-img-element -- signed URL expira, sem sentido usar next/image
+        <img src={previewUrl} alt="" className="mb-6 max-h-96 rounded border object-contain" />
+      )}
+      {previewUrl && isVideo && (
+        <video src={previewUrl} controls className="mb-6 max-h-96 w-full rounded border" />
+      )}
+      {!previewUrl && asset.status === "failed" && (
+        <div className="mb-6 rounded border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+          {friendlyUploadError(asset.processing_error?.reason)}
+        </div>
+      )}
+      {!previewUrl && (asset.status === "pending" || asset.status === "processing") && (
+        <div className="mb-6 rounded border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          Ainda processando…
+        </div>
+      )}
 
       <dl className="divide-y">
         {fields.map(([label, value]) => (
@@ -82,16 +129,40 @@ export default async function MediaAssetDetailPage({
         ))}
       </dl>
 
-      {asset.status === "failed" && asset.processing_error != null && (
-        <pre className="mt-6 overflow-x-auto rounded bg-red-50 p-3 text-xs text-red-700">
-          {JSON.stringify(asset.processing_error, null, 2)}
-        </pre>
-      )}
+      <section className="mt-8">
+        <h2 className="mb-2 text-sm font-medium opacity-70">Histórico de uso</h2>
+        {usage && usage.length > 0 ? (
+          <ul className="divide-y text-sm">
+            {usage.map((u) => (
+              <li key={u.id} className="flex justify-between py-2">
+                <span>
+                  {u.profile?.name ?? "Perfil removido"} · {u.platform}
+                  {u.context ? ` · ${u.context}` : ""}
+                </span>
+                <span className="opacity-60">
+                  {new Date(u.used_at).toLocaleDateString("pt-BR")}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm opacity-60">Essa mídia ainda não foi usada em nenhum perfil.</p>
+        )}
+      </section>
 
-      <p className="mt-6 text-sm opacity-60">
-        Fingerprint perceptual e histórico de uso por perfil chegam na Fase 3/próximas —
-        ver docs/PITCHAT_ARCHITECTURE.md.
-      </p>
+      <details className="mt-8 text-sm">
+        <summary className="cursor-pointer opacity-60">Informações técnicas</summary>
+        <dl className="mt-2 divide-y">
+          <div className="flex justify-between gap-4 py-2">
+            <dt className="opacity-60">SHA-256</dt>
+            <dd className="text-right break-all">{asset.sha256 ?? "—"}</dd>
+          </div>
+          <div className="flex justify-between gap-4 py-2">
+            <dt className="opacity-60">Storage key</dt>
+            <dd className="text-right break-all">{asset.storage_key}</dd>
+          </div>
+        </dl>
+      </details>
     </main>
   );
 }

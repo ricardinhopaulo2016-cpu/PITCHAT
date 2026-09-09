@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getCurrentWorkspace } from "@/lib/workspace";
+import { getMediaStats } from "@/lib/media/stats";
 import { LogoutButton } from "./logout-button";
 
 export default async function DashboardPage() {
@@ -14,6 +16,9 @@ export default async function DashboardPage() {
   if (!user) redirect("/login");
 
   const workspace = await getCurrentWorkspace(user.id);
+  const admin = getSupabaseAdminClient();
+  const stats =
+    workspace && admin ? await getMediaStats(admin, workspace.id) : null;
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">
@@ -22,31 +27,53 @@ export default async function DashboardPage() {
         <LogoutButton />
       </div>
 
-      {workspace ? (
+      {!workspace ? (
+        <p className="text-sm opacity-80">
+          Seu usuário ({user.email}) ainda não pertence a nenhum workspace. Fale com
+          quem administra o PITCHAT pra ser adicionado.
+        </p>
+      ) : (
         <>
-          <p>
-            Logado como <strong>{user.email}</strong> no workspace{" "}
-            <strong>{workspace.name}</strong>.
+          <p className="text-sm opacity-70">
+            {user.email} · workspace <strong>{workspace.name}</strong>
           </p>
-          <p className="mt-4">
+
+          <div className="mt-6 grid grid-cols-3 gap-4">
+            <StatCard label="Mídias prontas" value={stats?.ready ?? "—"} />
+            <StatCard label="Processando" value={stats?.processing ?? "—"} />
+            <StatCard
+              label="Com erro"
+              value={stats?.failed ?? "—"}
+              tone={stats && stats.failed > 0 ? "warn" : undefined}
+            />
+          </div>
+
+          <p className="mt-8">
             <Link href="/dashboard/media" className="underline">
               Media Library →
             </Link>
           </p>
         </>
-      ) : (
-        <p className="text-sm opacity-80">
-          Seu usuário ({user.email}) ainda não pertence a nenhum workspace. Crie um
-          registro em <code>workspace_members</code> (ver{" "}
-          <code>supabase/schema.sql</code>) apontando pro seu <code>auth.users.id</code>.
-        </p>
       )}
-
-      <p className="mt-6 text-sm opacity-60">
-        Fase 1 (fundação) em andamento — Profiles, Social Accounts, Automations, Inbox e
-        Media Library chegam nas próximas fases (ver{" "}
-        <code>docs/PITCHAT_ARCHITECTURE.md</code>).
-      </p>
     </main>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number | string;
+  tone?: "warn";
+}) {
+  return (
+    <div className="rounded border p-4">
+      <div className={`text-2xl font-semibold ${tone === "warn" ? "text-amber-600" : ""}`}>
+        {value}
+      </div>
+      <div className="text-sm opacity-60">{label}</div>
+    </div>
   );
 }
