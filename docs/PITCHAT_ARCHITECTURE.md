@@ -4,9 +4,11 @@
 
 ## 1. Visão
 
-PITCHAT é a plataforma interna para centralizar automação de Instagram (estilo ManyChat, só com o que a operação realmente usa), Media Library inteligente e Inbox — com arquitetura pronta para, no futuro, ganhar publicação/agendamento sem reescrita.
+> **Mudança oficial de escopo (09/09/2026)**: a partir desta data, o PITCHAT V1 é **o nosso próprio ManyChat para Instagram** — foco absoluto no fluxo comentário → keyword match → resposta pública → private reply/DM → interação → continuação de flow → delay → condition → follow-up → Inbox + logs. Ver seção 12 (Roadmap) para as fases A–K vigentes.
 
-**Fora de escopo nesta fase (V1)**: agendamento de publicação, calendário de posts, publicação automática, Content Publishing API, scheduler. Isso fica para uma fase futura; não existe código morto/placeholder para isso no V1.
+PITCHAT é a plataforma interna para automação de Instagram (estilo ManyChat, só com o que a operação realmente usa) e Inbox operacional, com arquitetura pronta para, no futuro, ganhar Media Library avançada e publicação/agendamento sem reescrita.
+
+**CONGELADO nesta fase** (código existente preservado, sem refactor grande, sem novo desenvolvimento até decisão explícita de retomada): Media Library (upload, fingerprint perceptual, deduplicação), integração com Google Drive, e qualquer feature de publicação/agendamento/calendário/TikTok Publisher/estilo mLabs. Nada disso é deletado; apenas não recebe trabalho novo. Ver seção 8 (marcada como congelada) e seção 12.
 
 ## 2. Stack (decidida com o usuário em 08/09/2026)
 
@@ -141,7 +143,9 @@ QStash → POST /api/jobs/process-webhook-event (assinado, verificado com QSTASH
 
 Delay de automação (`DELAY` node) usa o mesmo mecanismo: QStash agenda o próximo step com `Upstash-Delay` e um callback assinado apontando pro `automation_run_id` + `step_index` a retomar.
 
-## 8. Media Library — identidade sem depender de filename
+## 8. Media Library — identidade sem depender de filename ⚠️ CONGELADO (09/09/2026)
+
+> Esta seção descreve código já existente (`app/dashboard/media/*`, `app/api/media/*`, `lib/media/*`, tabelas `media_assets`/`media_fingerprints`/`media_usage`/`media_duplicate_reviews`). **Não desenvolver, não refatorar, não corrigir bugs aqui** até nova decisão explícita — inclusive: sem suporte a vídeo grande, sem TUS, sem novo fingerprint, sem exclusão de código. Mantida apenas como referência histórica.
 
 Pipeline de import (upload direto ou Google Drive):
 
@@ -174,26 +178,41 @@ Cada execução gera `automation_runs` + `automation_run_steps` (uma linha por s
 
 | Risco | Impacto | Mitigação |
 |---|---|---|
-| App Review + Business Verification da Meta pode ser exigido antes de gerenciar contas de terceiros | Bloqueia onboarding de clientes externos | Validar com Standard Access + contas próprias primeiro; migrar pra Advanced Access quando necessário |
-| Meta App ainda não existe | Bloqueia toda a Fase 4+ (OAuth/webhooks reais) | Checklist de criação em `PITCHAT_META_INTEGRATION.md`, ação manual do usuário |
-| Projeto Supabase do PITCHAT ainda não existe | Bloqueia toda persistência real | Usuário precisa criar em supabase.com e preencher `.env.local` |
-| Conta Upstash/QStash ainda não existe | Bloqueia delays/filas reais | Usuário precisa criar conta e preencher `.env.local` |
-| Fingerprint perceptual de vídeo é uma área com muita variação de qualidade | Falsos positivos/negativos de duplicata | V1 usa heurística documentada e substituível (score exposto na UI, decisão humana persistida) |
+| Meta App do PITCHAT ainda não existe (não pode reaproveitar app de outro projeto) | Bloqueia teste real de OAuth/webhook/Send API — código já existe mas nunca rodou contra API real | Checklist exato de criação em `PITCHAT_META_INTEGRATION.md` §1, ação manual do usuário |
+| Advanced Access + Business Verification exigidos para gerenciar contas de terceiros (modelo Tech Provider) | Bloqueia onboarding de clientes externos, não bloqueia MVP com conta própria | Validar todo o fluxo com Standard Access + conta própria primeiro; migrar quando for atender terceiros |
+| Estrutura exata do webhook `message_reactions` não vem com JSON literal na doc oficial (só descrição textual) | Parser pode precisar ajuste após primeiro evento real | Tratar como best-effort, logar payload bruto, ajustar após teste ponta a ponta real |
+| Comportamento pós-expiração do long-lived token (60 dias) não documentado explicitamente | Pode exigir reconexão manual sem aviso claro | `social_accounts.status` já modela `expired`/`error`; health check na UI deve avisar antes de expirar |
+| Projeto Supabase / conta Upstash-QStash — status de configuração real não confirmado nesta auditoria | Pode bloquear persistência/delay real | Confirmar com o usuário; enquanto faltar, rotas já falham explícito (`META_NOT_CONFIGURED`/QStash not configured), nunca fingem sucesso |
 
-## 12. Roadmap (ordem de implementação — não pular fase quebrada)
+## 12. Roadmap — substituído em 09/09/2026 (mudança oficial de escopo)
 
-- [x] **Fase 0** — Auditoria + pesquisa oficial + este documento
-- [~] **Fase 1** — Fundação: workspace, profiles, auth, banco, permissões *(em andamento — ver relatório de fase)*
-- [ ] Fase 2 — Media Library: upload, storage, ffprobe, SHA-256, duplicata exata
-- [ ] Fase 3 — Fingerprint perceptual
-- [ ] Fase 4 — Conexão Instagram (OAuth)
-- [ ] Fase 5 — Webhooks / comentários / contatos
-- [ ] Fase 6 — Motor de automação mínimo (trigger → keyword → public reply → private reply → send message → end)
-- [ ] Fase 7 — automation_runs + logs
-- [ ] Fase 8 — Botões / quick replies
-- [ ] Fase 9 — Delay / conditions / tags / custom fields
-- [ ] Fase 10 — Inbox + human takeover
-- [ ] Fase 11 — HTTP request node / random split
-- [ ] Fase 12 — Polish / testes / segurança
+O roadmap anterior (Fase 0–12, com Media Library nas Fases 2–3) está **substituído** pelo plano abaixo. Auditoria de 09/09/2026 mostrou que boa parte da fundação de automação já está implementada e testada — o roadmap reflete isso (fases marcadas `[x]` já têm código funcional, ainda não testado contra API real da Meta por falta de Meta App).
 
-**Explicitamente fora do roadmap desta versão**: publicação, agendamento, calendário, scheduler, TikTok Publisher.
+- [x] **Fase A** — Meta Integration research + connection: pesquisa oficial atualizada (`PITCHAT_META_INTEGRATION.md`), OAuth (`lib/meta/oauth.ts`, `app/api/auth/meta/*`) e UI de Social Accounts já implementados — falta testar contra Meta App real
+- [x] **Fase B** — Webhooks + normalização de eventos: `app/api/webhooks/meta/route.ts` (verificação, assinatura, idempotência, fila QStash) + `lib/meta/events.ts` já implementados
+- [~] **Fase C** — Comments + Contacts + Conversations: upsert idempotente já existe em `lib/automation/ingest.ts`; falta UI dedicada de Contacts e trigger isolado a partir de mensagem direta (hoje só comentário dispara run)
+- [x] **Fase D** — Automation Engine mínimo: grafo + 13 node types + testes (`lib/automation/{graph,node-handlers,engine}.ts`)
+- [x] **Fase E** — Public Reply + Private Reply: implementado em `lib/meta/client.ts` + node handlers
+- [x] **Fase F** — Quick Replies + resume flow: `buildQuickReplyPayload`/`parseQuickReplyPayload` em `lib/automation/engine.ts`, `ingestInstagramQuickReply` em `ingest.ts`
+- [x] **Fase G** — QStash + Delay: `lib/qstash.ts`, `app/api/jobs/resume-automation-run/route.ts`, `claimWaitingRun` (lock atômico)
+- [x] **Fase H** — Conditions + Tags + Fields: node types `CONDITION`/`ADD_TAG`/`REMOVE_TAG`/`SET_CUSTOM_FIELD` implementados
+- [ ] **Fase I** — Inbox + Human Takeover: **não implementado** — sem UI, `messages` sem código de leitura, sem botão pausar/retomar automação
+- [~] **Fase J** — Automation Editor: CRUD completo (`app/api/automations/**`) + editor sequencial V1 (`app/dashboard/automations/**`, `lib/automation/flow-spec.ts`) implementados em 09/09/2026, com o flow de referência "Instagram Comment → DM Test" disponível via botão de seed. Pendente: UI de Contacts (item 31), editor visual (canvas), CONDITION com segundo braço editável (V1 força `false` → END sempre)
+- [ ] **Fase K** — Hardening + teste ponta a ponta real: pendente até existir Meta App configurado; inclui rodar `supabase db dump` pra sincronizar `schema.sql` com as migrations
+
+> **Reprioridade em 09/09/2026**: Fase K passa a ser a prioridade máxima, à frente de Inbox (I)/Contacts/editor visual — ver `docs/PITCHAT_META_INTEGRATION.md` §0. Nenhum dos quatro fluxos críticos (OAuth, Webhook, Private Reply, Send API) conta como "funcionando" só por ter código+teste mockado — status correto é `IMPLEMENTED / NOT E2E VERIFIED` até rodar contra a API real. Ordem do primeiro teste real (checklist §1 do doc de integração é pré-requisito):
+> 1. Meta App criado e configurado (ação do usuário)
+> 2. OAuth real (conectar 1 Instagram profissional de teste)
+> 3. Webhook/subscription real
+> 4. Comentário real recebido → normalizado → persistido
+> 5. `automation_run` iniciado → `PUBLIC_REPLY` real → `PRIVATE_REPLY` real
+> 6. Interação/mensagem real recebida → run `waiting` correto identificado → flow continua → `SEND_MESSAGE` real
+> 7. `DELAY` real via QStash (se credenciais já existirem) → follow-up real
+>
+> Trabalho em Inbox/CRUD/editor visual só avança enquanto o usuário estiver fazendo configuração manual no painel da Meta (não pode virar prioridade maior que fechar esse E2E).
+
+**Correção de bug encontrada em 09/09/2026**: `lib/meta/events.ts` só reconhecia `messages`/`messaging_postbacks` no formato legado `entry.messaging[]` (Messenger/Facebook Page) — a doc oficial revalidada mostra que o envelope com exemplo confirmado é `entry.changes[].{field,value}` (mesmo formato de `comments`). Corrigido para aceitar os dois formatos; ver `docs/PITCHAT_META_INTEGRATION.md` §3.
+
+**Gaps adicionais identificados na auditoria** (não bloqueantes, mas fora das fases acima): tabelas `jobs`, `links`, `audit_logs` existem no schema mas nenhum código lê/escreve nelas ainda; falta teste dedicado para `lib/automation/ingest.ts`; editor V1 não expõe `RANDOM_SPLIT`/`HTTP_REQUEST` na UI (engine já suporta os dois).
+
+**Explicitamente CONGELADO** (código preservado, zero desenvolvimento novo até decisão explícita): Media Library (upload, storage, ffprobe, SHA-256, fingerprint perceptual, dedup), Google Drive, publicação, agendamento, calendário, scheduler, TikTok Publisher, qualquer feature estilo mLabs.

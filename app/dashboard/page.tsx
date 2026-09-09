@@ -48,9 +48,15 @@ export default async function DashboardPage() {
             />
           </div>
 
-          <p className="mt-8">
-            <Link href="/dashboard/media" className="underline">
-              Media Library →
+          <p className="mt-8 flex gap-4">
+            <Link href="/dashboard/automations" className="underline">
+              Automations →
+            </Link>
+            <Link href="/dashboard/social-accounts" className="underline">
+              Social Accounts →
+            </Link>
+            <Link href="/dashboard/media" className="underline opacity-60">
+              Media Library (congelada) →
             </Link>
           </p>
         </>
