@@ -26,6 +26,14 @@ export async function ingestInstagramComment(
   socialAccount: SocialAccountRow,
   event: InstagramCommentReceived
 ): Promise<{ processed: boolean; reason?: string }> {
+  // Nunca reagir a comentário feito pela própria conta profissional — evita
+  // loop com a resposta pública que o próprio PUBLIC_REPLY posta (a Meta
+  // manda webhook de volta pra ela também) e qualquer comentário manual
+  // que o operador fizer com a conta do perfil.
+  if (event.fromUserId && event.fromUserId === socialAccount.external_account_id) {
+    return { processed: false, reason: "IGNORED_OWN_COMMENT" };
+  }
+
   if (!socialAccount.access_token_encrypted) {
     return { processed: false, reason: "SOCIAL_ACCOUNT_NOT_CONNECTED" };
   }
