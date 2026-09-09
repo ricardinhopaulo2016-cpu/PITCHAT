@@ -143,7 +143,7 @@ Fontes: https://developers.facebook.com/docs/instagram-platform/webhooks , https
 
 Fonte de todos os payloads acima: https://developers.facebook.com/docs/graph-api/webhooks/reference/instagram
 
-**Buscar detalhes de um comentário via Graph API** (se o payload do webhook não bastar): `GET https://graph.instagram.com/v25.0/<IG_COMMENT_ID>?fields=id,text,username,timestamp,like_count,media,parent_id,hidden,from&access_token=<token>`.
+**Buscar detalhes de um comentário via Graph API** (se o payload do webhook não bastar): `GET https://graph.instagram.com/v26.0/<IG_COMMENT_ID>?fields=id,text,username,timestamp,like_count,media,parent_id,hidden,from&access_token=<token>`.
 Fonte: https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/reference/ig-comment/
 
 ## 4. Private Reply (resposta privada a comentário)
@@ -163,7 +163,7 @@ Fonte: https://developers.facebook.com/docs/instagram-platform/private-replies/
 
 ## 5. Send API (mensagens diretas)
 
-`POST https://graph.instagram.com/v25.0/<IG_ID>/messages`
+`POST https://graph.instagram.com/v26.0/<IG_ID>/messages`
 
 **Texto** (até 1000 bytes UTF-8):
 ```json
@@ -273,7 +273,7 @@ META_APP_ID=
 META_APP_SECRET=
 META_REDIRECT_URI=
 META_WEBHOOK_VERIFY_TOKEN=
-META_API_VERSION=v25.0
+META_API_VERSION=v26.0
 META_TOKEN_ENCRYPTION_KEY=
 ```
 

@@ -1,7 +1,8 @@
 // Sem "server-only" de propósito — só funciona dentro do bundler do Next e
 // quebra testes em Node puro (mesmo caso de lib/media/ffprobe.ts). Este
-// cliente recebe o access token por parâmetro (nunca lê env global), então
-// nem faz sentido protegê-lo contra import client-side por esse motivo.
+// cliente recebe o access token por parâmetro (nunca lê token/secret de env
+// global) — só META_API_VERSION vem de env, e não é secret — então nem faz
+// sentido protegê-lo contra import client-side por esse motivo.
 
 /**
  * Cliente HTTP real da Instagram Graph API (Instagram API with Instagram
@@ -11,6 +12,8 @@
  * interface `MetaClient`, nunca chama fetch direto — troca de implementação
  * (ex: um FakeMetaClient em teste) não exige mexer em mais nada.
  */
+
+import { getGraphApiVersion } from "./api-version";
 
 export type MetaApiErrorKind = "RETRYABLE" | "NON_RETRYABLE";
 
@@ -84,7 +87,6 @@ export function classifyMetaError(httpStatus: number, errorCode?: number): MetaA
   return httpStatus === 429 || httpStatus >= 500 ? "RETRYABLE" : "NON_RETRYABLE";
 }
 
-const GRAPH_API_VERSION = "v25.0";
 const GRAPH_BASE_URL = "https://graph.instagram.com";
 
 async function callGraphApi(
@@ -92,7 +94,7 @@ async function callGraphApi(
   accessToken: string,
   body: Record<string, unknown>
 ): Promise<Record<string, unknown>> {
-  const res = await fetch(`${GRAPH_BASE_URL}/${GRAPH_API_VERSION}${path}`, {
+  const res = await fetch(`${GRAPH_BASE_URL}/${getGraphApiVersion()}${path}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

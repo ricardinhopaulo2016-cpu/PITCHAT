@@ -1,4 +1,5 @@
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
+import { getGraphApiVersion } from "./api-version";
 
 /**
  * Instagram API with Instagram Login — fluxo OAuth completo. Endpoints e
@@ -125,7 +126,11 @@ export async function fetchInstagramProfile(
   accessToken: string,
   userId: string
 ): Promise<{ username: string | null }> {
-  const url = new URL(`https://graph.instagram.com/${userId}`);
+  // Lookup de nó da Graph API — ao contrário dos endpoints de token acima
+  // (esses não levam versão, confirmado na doc oficial), este segue o padrão
+  // versionado normal (mesmo formato usado pra IG-Comment, ver
+  // docs/PITCHAT_META_INTEGRATION.md §3).
+  const url = new URL(`https://graph.instagram.com/${getGraphApiVersion()}/${userId}`);
   url.searchParams.set("fields", "username");
   url.searchParams.set("access_token", accessToken);
 
