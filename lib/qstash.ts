@@ -4,6 +4,16 @@ import { Client, Receiver } from "@upstash/qstash";
 // módulo só é importado por Route Handlers/lib server-side, nunca por
 // Client Components.
 
+/**
+ * QStash rejeita ":" (e possivelmente outros caracteres não documentados)
+ * em `deduplicationId` — descoberto testando contra a API real em
+ * 09/09/2026, não estava em nenhuma doc consultada antecipadamente. Troca
+ * qualquer caractere fora de [A-Za-z0-9_-] por "-", nunca deixa passar cru.
+ */
+export function sanitizeDeduplicationId(id: string): string {
+  return id.replace(/[^A-Za-z0-9_-]/g, "-");
+}
+
 let cachedClient: Client | null | undefined;
 
 /** Publica jobs no QStash. Server-only, precisa de QSTASH_TOKEN. */
@@ -52,7 +62,10 @@ export async function scheduleAutomationResume(params: {
       url: `${appUrl}/api/jobs/resume-automation-run`,
       body: { automationRunId: params.automationRunId },
       delay: params.minutes * 60,
-      deduplicationId: params.deduplicationId,
+      // QStash rejeita ":" em deduplicationId (descoberto testando contra a
+      // API real, não documentado antecipadamente) — nunca passar o valor
+      // do caller direto, sempre saneado por aqui.
+      deduplicationId: sanitizeDeduplicationId(params.deduplicationId),
       retries: 3,
     });
     return { ok: true, messageId: res.messageId };
@@ -75,7 +88,7 @@ export async function scheduleWebhookProcessing(params: {
     const res = await client.publishJSON({
       url: `${appUrl}/api/jobs/process-webhook-event`,
       body: { webhookEventId: params.webhookEventId },
-      deduplicationId: `webhook-event:${params.webhookEventId}`,
+      deduplicationId: sanitizeDeduplicationId(`webhook-event-${params.webhookEventId}`),
       retries: 3,
     });
     return { ok: true, messageId: res.messageId };
