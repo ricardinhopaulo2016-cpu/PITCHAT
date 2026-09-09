@@ -122,43 +122,69 @@ export async function ingestInstagramQuickReply(
   const run = await claimWaitingRun(admin, parsed.runId, "quick_reply");
   if (!run) return { processed: false, reason: "RUN_JA_RETOMADO_OU_NAO_ENCONTRADO" }; // idempotência: outro webhook já pegou
 
-  const { data: automationRun } = await admin
-    .from("automation_runs")
-    .select("automation_version_id, contact_id")
-    .eq("id", run.id)
-    .single();
+  // Mesmo cuidado do node DELAY (ver app/api/jobs/resume-automation-run):
+  // sem try/catch aqui, uma exceção depois do claim (token ausente, versão
+  // não encontrada, etc.) deixava o run travado pra sempre em 'running' —
+  // claimWaitingRun só reivindica de 'waiting', então nunca mais seria
+  // retomado. Descoberto testando a infraestrutura real em 09/09/2026.
+  try {
+    const { data: automationRun, error: automationRunError } = await admin
+      .from("automation_runs")
+      .select("automation_version_id, contact_id")
+      .eq("id", run.id)
+      .single();
+    if (automationRunError || !automationRun) {
+      throw new Error(`Falha ao recarregar run: ${automationRunError?.message}`);
+    }
 
-  const { data: version } = await admin
-    .from("automation_versions")
-    .select("graph")
-    .eq("id", automationRun!.automation_version_id)
-    .single();
+    const { data: version, error: versionError } = await admin
+      .from("automation_versions")
+      .select("graph")
+      .eq("id", automationRun.automation_version_id)
+      .single();
+    if (versionError || !version) throw new Error(`Versão não encontrada: ${versionError?.message}`);
 
-  const socialAccountForEngine: SocialAccountForEngine = {
-    id: socialAccount.id,
-    externalAccountId: socialAccount.external_account_id,
-    accessToken: decryptToken(socialAccount.access_token_encrypted!),
-  };
+    const socialAccountForEngine: SocialAccountForEngine = {
+      id: socialAccount.id,
+      externalAccountId: socialAccount.external_account_id,
+      accessToken: decryptToken(socialAccount.access_token_encrypted!),
+    };
 
-  const ctx: ExecutionContext = {
-    variables: run.context,
-    quickReplyOptionKey: parsed.optionKey,
-    contactTags: [],
-    customFields: {},
-    conversationAutomationEnabled: true,
-  };
+    const ctx: ExecutionContext = {
+      variables: run.context,
+      quickReplyOptionKey: parsed.optionKey,
+      contactTags: [],
+      customFields: {},
+      conversationAutomationEnabled: true,
+    };
 
-  await advanceRun(admin, meta, {
-    run,
-    graph: version!.graph as Graph,
-    socialAccount: socialAccountForEngine,
-    recipientId: event.fromUserId,
-    commentId: null,
-    ctx,
-    startNodeId: nextAfter(parsed.nodeId, version!.graph as Graph),
-  });
+    await advanceRun(admin, meta, {
+      run,
+      graph: version.graph as Graph,
+      socialAccount: socialAccountForEngine,
+      recipientId: event.fromUserId,
+      commentId: null,
+      ctx,
+      startNodeId: nextAfter(parsed.nodeId, version.graph as Graph),
+    });
 
-  return { processed: true };
+    return { processed: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    await admin.from("automation_run_steps").insert({
+      automation_run_id: run.id,
+      node_id: parsed.nodeId,
+      node_type: "QUICK_REPLY_RESUME",
+      status: "failed",
+      error: { message },
+      completed_at: new Date().toISOString(),
+    });
+    await admin
+      .from("automation_runs")
+      .update({ status: "failed", updated_at: new Date().toISOString() })
+      .eq("id", run.id);
+    return { processed: false, reason: `RESUME_FAILED: ${message}` };
+  }
 }
 
 /** Acha o próximo node depois do QUICK_REPLY que pausou, seguindo a aresta certa. */
