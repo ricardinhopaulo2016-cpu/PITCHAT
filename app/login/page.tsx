@@ -30,22 +30,24 @@ function LoginForm() {
     setError(null);
     setLoading(true);
 
-    const supabase = getSupabaseBrowserClient();
-    if (!supabase) {
-      setError("Supabase não está configurado.");
-      setLoading(false);
-      return;
-    }
-
-    // signInWithPassword normalmente RESOLVE com { error } mesmo pra
-    // credencial inválida — mas pode LANÇAR (rede caiu, extensão do
-    // navegador bloqueando o domínio do Supabase, DNS, etc.). Sem
-    // try/catch/finally, uma exceção aqui deixava o botão preso em
-    // "Entrando..." pra sempre, sem erro nenhum na tela (a causa real do bug
-    // relatado — nunca mais deixar isso acontecer). O timeout cobre o caso
-    // em que a promise nem resolve nem rejeita (ex: extensão engolindo a
-    // request silenciosamente).
+    // TUDO fica dentro do try — inclusive getSupabaseBrowserClient() e
+    // createBrowserClient() por trás dela. Achado real testando em aba
+    // anônima: essas restam FORA do try na versão anterior do fix, e
+    // createBrowserClient pode lançar em contextos com storage/cookies
+    // restritos (aba anônima, extensão bloqueando) — exatamente o motivo do
+    // botão continuar travado mesmo depois do primeiro fix (finally nunca
+    // rodava porque a exceção nem chegava a entrar no try). Nunca mais deixar
+    // nenhum caminho de exceção fora do try/catch/finally aqui.
     try {
+      const supabase = getSupabaseBrowserClient();
+      if (!supabase) {
+        setError("Supabase não está configurado.");
+        return;
+      }
+
+      // signInWithPassword normalmente RESOLVE com { error } mesmo pra
+      // credencial inválida, mas pode LANÇAR (rede caiu, DNS, etc.) — o
+      // timeout cobre o caso em que a promise nem resolve nem rejeita.
       const result = await Promise.race([
         supabase.auth.signInWithPassword({ email, password }),
         new Promise<never>((_, reject) =>
