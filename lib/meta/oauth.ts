@@ -4,8 +4,20 @@ import { getGraphApiVersion } from "./api-version";
 /**
  * Instagram API with Instagram Login — fluxo OAuth completo. Endpoints e
  * formato de resposta confirmados via documentação oficial (ver
- * docs/PITCHAT_META_INTEGRATION.md §1). Ainda não testado contra a API real
- * — bloqueado até existir Meta App configurado.
+ * docs/PITCHAT_META_INTEGRATION.md §1).
+ *
+ * ATENÇÃO — achado real testando contra o app de produção (10/09/2026,
+ * erro "Invalid platform app"): o client_id/client_secret usados em TODO
+ * este fluxo (authorize, troca de code, exchange pra long-lived) são o
+ * **Instagram App ID / Instagram App Secret** — exibidos em App Dashboard →
+ * Instagram → API setup with Instagram login → Business login settings —
+ * e são DIFERENTES do Meta App ID/Secret "principal" (App settings → Basic).
+ * Confirmado literalmente na doc oficial (business-login): "Your app's
+ * Instagram App ID displayed in App Dashboard > Instagram > API setup with
+ * Instagram login > ... > Instagram App ID" — usado tanto no authorize
+ * quanto no token exchange. O Meta App ID/Secret "principal" continua sendo
+ * usado só pra webhook (X-Hub-Signature-256, ver lib/meta/signature.ts) e
+ * subscriptions a nível de app — não pra OAuth.
  */
 
 const SCOPES = [
@@ -15,23 +27,23 @@ const SCOPES = [
 ].join(",");
 
 export type MetaOAuthConfig = {
-  appId: string;
-  appSecret: string;
+  instagramAppId: string;
+  instagramAppSecret: string;
   redirectUri: string;
 };
 
 export function getMetaOAuthConfig(): MetaOAuthConfig | null {
-  const appId = process.env.META_APP_ID;
-  const appSecret = process.env.META_APP_SECRET;
+  const instagramAppId = process.env.INSTAGRAM_APP_ID;
+  const instagramAppSecret = process.env.INSTAGRAM_APP_SECRET;
   const redirectUri = process.env.META_REDIRECT_URI;
-  if (!appId || !appSecret || !redirectUri) return null;
-  return { appId, appSecret, redirectUri };
+  if (!instagramAppId || !instagramAppSecret || !redirectUri) return null;
+  return { instagramAppId, instagramAppSecret, redirectUri };
 }
 
 /** Monta a URL pra onde o usuário é mandado pra autorizar o PITCHAT. */
 export function buildAuthorizationUrl(config: MetaOAuthConfig, state: string): string {
   const url = new URL("https://www.instagram.com/oauth/authorize");
-  url.searchParams.set("client_id", config.appId);
+  url.searchParams.set("client_id", config.instagramAppId);
   url.searchParams.set("redirect_uri", config.redirectUri);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("scope", SCOPES);
@@ -51,8 +63,8 @@ export async function exchangeCodeForShortLivedToken(
   code: string
 ): Promise<ShortLivedTokenResult> {
   const body = new URLSearchParams({
-    client_id: config.appId,
-    client_secret: config.appSecret,
+    client_id: config.instagramAppId,
+    client_secret: config.instagramAppSecret,
     grant_type: "authorization_code",
     redirect_uri: config.redirectUri,
     code,
@@ -82,14 +94,14 @@ export type LongLivedTokenResult = {
   expiresAt: Date;
 };
 
-/** short-lived -> long-lived (60 dias). Server-side only (usa o App Secret). */
+/** short-lived -> long-lived (60 dias). Server-side only (usa o Instagram App Secret). */
 export async function exchangeForLongLivedToken(
   config: MetaOAuthConfig,
   shortLivedToken: string
 ): Promise<LongLivedTokenResult> {
   const url = new URL("https://graph.instagram.com/access_token");
   url.searchParams.set("grant_type", "ig_exchange_token");
-  url.searchParams.set("client_secret", config.appSecret);
+  url.searchParams.set("client_secret", config.instagramAppSecret);
   url.searchParams.set("access_token", shortLivedToken);
 
   const res = await fetch(url.toString());

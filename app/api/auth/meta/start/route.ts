@@ -33,6 +33,6 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "PROFILE_NOT_FOUND" }, { status: 404 });
   }
 
-  const state = buildOAuthState(auth.workspace.id, profileId, config.appSecret);
+  const state = buildOAuthState(auth.workspace.id, profileId, config.instagramAppSecret);
   return NextResponse.redirect(buildAuthorizationUrl(config, state));
 }

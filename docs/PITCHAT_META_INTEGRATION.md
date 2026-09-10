@@ -31,6 +31,13 @@ O PITCHAT terá **Meta App próprio** — não reutilizar app de outro projeto (
 5. Anote em **App Dashboard → App settings → Basic** (esse caminho é estável, não faz parte do wizard do produto):
    - `META_APP_ID` (App ID)
    - `META_APP_SECRET` (App Secret)
+
+   ⚠️ **Achado real (10/09/2026, erro "Invalid platform app")**: esses dois valores são o Meta App ID/Secret **principal** — usados **só** pra webhook (`X-Hub-Signature-256`) e subscriptions a nível de app (§6/§3 deste doc). **Não são o que vai no OAuth.** Pra OAuth, anote **também** em **App Dashboard → Instagram → API setup with Instagram login → Business login settings**:
+   - `INSTAGRAM_APP_ID` ("Instagram App ID" — é um número diferente do App ID principal)
+   - `INSTAGRAM_APP_SECRET` ("Instagram app secret" — também diferente do App Secret principal)
+
+   Confirmado literalmente na doc oficial: *"Your app's Instagram App ID displayed in App Dashboard > Instagram > API setup with Instagram login > ... > Instagram App ID"* — usado no `client_id` tanto do `authorize` quanto da troca de `code`/exchange pra long-lived. Usar o Meta App ID ali causa `Invalid platform app`.
+   Fonte: https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login/business-login
 6. Configure o **Webhook** do produto Instagram (dentro do mesmo assistente "API setup with Instagram login", seção de Webhooks, ou em **App Dashboard → Webhooks → Instagram**):
    - **Callback URL**: `https://<seu-domínio>/api/webhooks/meta`
    - **Verify token**: você escolhe uma string aleatória própria → vai em `META_WEBHOOK_VERIFY_TOKEN` no `.env` (precisa ser idêntica dos dois lados — o `GET` do nosso endpoint já valida isso, ver §3)
@@ -63,14 +70,16 @@ Alternativa existente (não escolhida): "Instagram API with Facebook Login" — 
 
 ### Endpoints e sequência OAuth
 
+⚠️ **`client_id`/`client_secret` nos passos 1-3 são o Instagram App ID/Secret — NUNCA o Meta App ID/Secret principal.** Achado real testando contra produção em 10/09/2026 (erro `Invalid platform app` usando o App ID principal); confirmado na doc oficial. Ver checklist §1.
+
 | Passo | Endpoint | Notas |
 |---|---|---|
-| 1. Autorização (browser) | `GET https://www.instagram.com/oauth/authorize?client_id=&redirect_uri=&response_type=code&scope=` | `redirect_uri` idêntica à cadastrada; `scope` = lista separada por vírgula das 3 permissions |
-| 2. Troca code → short-lived token | `POST https://api.instagram.com/oauth/access_token` (`client_id`, `client_secret`, `grant_type=authorization_code`, `redirect_uri`, `code`) | `code` da URL de callback vale **1h, uso único** |
-| 3. Exchange → long-lived token | `GET https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=&access_token=` | short-lived expira em **3600s (1h)**; long-lived expira em **5.184.000s (60 dias)** |
-| 4. Refresh do long-lived | `GET https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token&access_token=` | só funciona se o token tiver **≥24h de idade** e **ainda não estiver expirado**; renovado vale outros 60 dias |
+| 1. Autorização (browser) | `GET https://www.instagram.com/oauth/authorize?client_id=&redirect_uri=&response_type=code&scope=` | `client_id` = **Instagram App ID**; `redirect_uri` idêntica à cadastrada; `scope` = lista separada por vírgula das 3 permissions |
+| 2. Troca code → short-lived token | `POST https://api.instagram.com/oauth/access_token` (`client_id`, `client_secret`, `grant_type=authorization_code`, `redirect_uri`, `code`) | `client_id`/`client_secret` = **Instagram App ID/Secret**; `code` da URL de callback vale **1h, uso único** |
+| 3. Exchange → long-lived token | `GET https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=&access_token=` | `client_secret` = **Instagram App Secret**; short-lived expira em **3600s (1h)**; long-lived expira em **5.184.000s (60 dias)** |
+| 4. Refresh do long-lived | `GET https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token&access_token=` | não leva client_secret; só funciona se o token tiver **≥24h de idade** e **ainda não estiver expirado**; renovado vale outros 60 dias |
 
-Fontes: https://developers.facebook.com/docs/instagram-platform/reference/access_token/ , https://developers.facebook.com/docs/instagram-platform/reference/refresh_access_token/
+Fontes: https://developers.facebook.com/docs/instagram-platform/reference/access_token/ , https://developers.facebook.com/docs/instagram-platform/reference/refresh_access_token/ , https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login/business-login
 
 **Não documentado claramente**: comportamento exato se o long-lived token expirar sem refresh a tempo (grace period vs. exigir OAuth completo de novo). Tratar como "exige reconexão manual" até validarmos na prática — `social_accounts.status = 'expired'` já modela isso.
 

@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 import { buildAuthorizationUrl, buildOAuthState, needsRefresh, verifyOAuthState } from "@/lib/meta/oauth";
 
 const config = {
-  appId: "990602627938098",
-  appSecret: "secret",
+  instagramAppId: "1578661687080525",
+  instagramAppSecret: "secret",
   redirectUri: "https://pitchat.exemplo.com/api/auth/meta/callback",
 };
 
@@ -12,7 +12,10 @@ describe("buildAuthorizationUrl", () => {
   it("monta a URL com os scopes atuais (prefixo instagram_business_*, nunca os legados)", () => {
     const url = new URL(buildAuthorizationUrl(config, "state123"));
     expect(url.origin + url.pathname).toBe("https://www.instagram.com/oauth/authorize");
-    expect(url.searchParams.get("client_id")).toBe(config.appId);
+    // client_id precisa ser o Instagram App ID, NUNCA o Meta App ID principal
+    // (achado real: erro "Invalid platform app" ao usar o App ID errado,
+    // confirmado na doc oficial — ver comentário no topo de lib/meta/oauth.ts).
+    expect(url.searchParams.get("client_id")).toBe(config.instagramAppId);
     expect(url.searchParams.get("redirect_uri")).toBe(config.redirectUri);
     expect(url.searchParams.get("response_type")).toBe("code");
     expect(url.searchParams.get("state")).toBe("state123");

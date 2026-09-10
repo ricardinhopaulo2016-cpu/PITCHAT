@@ -39,7 +39,7 @@ export async function GET(request: Request) {
   if (!config) return redirectToSocialAccounts("error", "meta_not_configured");
   if (!code || !state) return redirectToSocialAccounts("error", "missing_code_or_state");
 
-  const parsedState = verifyOAuthState(state, config.appSecret);
+  const parsedState = verifyOAuthState(state, config.instagramAppSecret);
   if (!parsedState) return redirectToSocialAccounts("error", "invalid_state");
 
   const admin = getSupabaseAdminClient();
