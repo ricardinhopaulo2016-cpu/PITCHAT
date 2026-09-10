@@ -59,7 +59,7 @@ export async function GET(request: Request) {
         username: profile.username,
         access_token_encrypted: encryptToken(longLived.accessToken),
         token_expires_at: longLived.expiresAt.toISOString(),
-        permissions: shortLived.permissions.split(","),
+        permissions: shortLived.permissions,
         status: "connected",
         status_detail: null,
       },

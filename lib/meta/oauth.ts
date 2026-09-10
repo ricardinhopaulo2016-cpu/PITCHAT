@@ -54,8 +54,26 @@ export function buildAuthorizationUrl(config: MetaOAuthConfig, state: string): s
 export type ShortLivedTokenResult = {
   accessToken: string;
   userId: string;
-  permissions: string;
+  permissions: string[];
 };
+
+/**
+ * Bug real de produção (10/09/2026): a API retorna `permissions` como ARRAY
+ * de verdade (`["instagram_business_basic", ...]`), não como string separada
+ * por vírgula — `entry.permissions.split(",")` no callback quebrava com
+ * "e.permissions.split is not a function". Normaliza na fronteira (aqui),
+ * nunca espalha tratamento defensivo pelo caller.
+ */
+export function normalizePermissions(raw: unknown): string[] {
+  if (Array.isArray(raw)) return raw.filter((p): p is string => typeof p === "string");
+  if (typeof raw === "string") {
+    return raw
+      .split(",")
+      .map((p) => p.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
 
 /** Troca o `code` (válido 1h, uso único) por um short-lived access token. */
 export async function exchangeCodeForShortLivedToken(
@@ -85,7 +103,7 @@ export async function exchangeCodeForShortLivedToken(
   return {
     accessToken: entry.access_token,
     userId: entry.user_id,
-    permissions: entry.permissions,
+    permissions: normalizePermissions(entry.permissions),
   };
 }
 

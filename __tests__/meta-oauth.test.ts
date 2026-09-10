@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { buildAuthorizationUrl, buildOAuthState, needsRefresh, verifyOAuthState } from "@/lib/meta/oauth";
+import { buildAuthorizationUrl, buildOAuthState, needsRefresh, normalizePermissions, verifyOAuthState } from "@/lib/meta/oauth";
 
 const config = {
   instagramAppId: "1578661687080525",
@@ -62,6 +62,44 @@ describe("buildOAuthState / verifyOAuthState", () => {
     ).toString("base64url");
     const sig = createHmac("sha256", secret).update(oldPayload).digest("base64url");
     expect(verifyOAuthState(`${oldPayload}.${sig}`, secret)).toBeNull();
+  });
+});
+
+describe("normalizePermissions", () => {
+  // Bug real de produção (10/09/2026): a API retorna array de verdade, não
+  // string separada por vírgula — "e.permissions.split is not a function"
+  // quebrou o callback do OAuth. Normalizado na fronteira, nunca mais espalhar
+  // esse tratamento pelo caller.
+  it("aceita array de strings (formato real da API)", () => {
+    expect(normalizePermissions(["instagram_business_basic", "instagram_business_manage_messages"])).toEqual([
+      "instagram_business_basic",
+      "instagram_business_manage_messages",
+    ]);
+  });
+
+  it("aceita string separada por vírgula (formato defensivo, caso a API mude ou em fixture antiga)", () => {
+    expect(normalizePermissions("instagram_business_basic, instagram_business_manage_messages")).toEqual([
+      "instagram_business_basic",
+      "instagram_business_manage_messages",
+    ]);
+  });
+
+  it("retorna [] pra undefined/null/tipo inesperado, nunca lança", () => {
+    expect(normalizePermissions(undefined)).toEqual([]);
+    expect(normalizePermissions(null)).toEqual([]);
+    expect(normalizePermissions(42)).toEqual([]);
+    expect(normalizePermissions({})).toEqual([]);
+  });
+
+  it("filtra itens não-string dentro do array, sem lançar", () => {
+    expect(normalizePermissions(["instagram_business_basic", 123, null, "instagram_business_manage_comments"])).toEqual(
+      ["instagram_business_basic", "instagram_business_manage_comments"]
+    );
+  });
+
+  it("string vazia ou só vírgulas retorna []", () => {
+    expect(normalizePermissions("")).toEqual([]);
+    expect(normalizePermissions(",,")).toEqual([]);
   });
 });
 
