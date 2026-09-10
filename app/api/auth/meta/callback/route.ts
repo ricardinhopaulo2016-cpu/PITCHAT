@@ -5,6 +5,7 @@ import {
   exchangeForLongLivedToken,
   fetchInstagramProfile,
   getMetaOAuthConfig,
+  subscribeAccountToWebhooks,
   verifyOAuthState,
 } from "@/lib/meta/oauth";
 import { encryptToken } from "@/lib/meta/token-crypto";
@@ -50,6 +51,13 @@ export async function GET(request: Request) {
     const longLived = await exchangeForLongLivedToken(config, shortLived.accessToken);
     const profile = await fetchInstagramProfile(longLived.accessToken, shortLived.userId);
 
+    // Assinar o app a nível de App Dashboard NÃO é suficiente — cada conta
+    // precisa individualmente "optar" por mandar eventos pro nosso app (ver
+    // comentário em lib/meta/oauth.ts::subscribeAccountToWebhooks). Achado
+    // real no primeiro teste E2E: sem isso, webhook_events nunca recebe nada
+    // pra essa conta, sem nenhum erro visível em lugar nenhum.
+    const webhookSubscribed = await subscribeAccountToWebhooks(longLived.accessToken, shortLived.userId);
+
     const { error: upsertError } = await admin.from("social_accounts").upsert(
       {
         workspace_id: parsedState.workspaceId,
@@ -61,14 +69,16 @@ export async function GET(request: Request) {
         token_expires_at: longLived.expiresAt.toISOString(),
         permissions: shortLived.permissions,
         status: "connected",
-        status_detail: null,
+        // Não falha a conexão inteira por isso (o OAuth em si funcionou) —
+        // mas nunca finge que o webhook está ativo se a chamada falhou.
+        status_detail: webhookSubscribed ? null : "webhook_subscription_failed",
       },
       { onConflict: "platform,external_account_id" }
     );
 
     if (upsertError) return redirectToSocialAccounts("error", "db_error");
 
-    return redirectToSocialAccounts("connected");
+    return redirectToSocialAccounts(webhookSubscribed ? "connected" : "error", webhookSubscribed ? undefined : "webhook_subscription_failed");
   } catch (err) {
     return redirectToSocialAccounts("error", err instanceof Error ? err.message : "unknown_error");
   }

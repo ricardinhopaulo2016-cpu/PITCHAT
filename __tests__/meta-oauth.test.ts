@@ -1,6 +1,13 @@
 import { createHmac } from "node:crypto";
-import { describe, expect, it } from "vitest";
-import { buildAuthorizationUrl, buildOAuthState, needsRefresh, normalizePermissions, verifyOAuthState } from "@/lib/meta/oauth";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  buildAuthorizationUrl,
+  buildOAuthState,
+  needsRefresh,
+  normalizePermissions,
+  subscribeAccountToWebhooks,
+  verifyOAuthState,
+} from "@/lib/meta/oauth";
 
 const config = {
   instagramAppId: "1578661687080525",
@@ -100,6 +107,36 @@ describe("normalizePermissions", () => {
   it("string vazia ou só vírgulas retorna []", () => {
     expect(normalizePermissions("")).toEqual([]);
     expect(normalizePermissions(",,")).toEqual([]);
+  });
+});
+
+describe("subscribeAccountToWebhooks", () => {
+  // Gap real encontrado no primeiro teste E2E: assinar o webhook a nível de
+  // APP não basta, cada conta precisa dessa chamada individual (ver
+  // comentário na função). Sem isso, webhook_events nunca recebe nada pra
+  // essa conta — sem nenhum erro visível.
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("chama POST /{igUserId}/subscribed_apps com os fields corretos e retorna true em sucesso", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await subscribeAccountToWebhooks("token-abc", "17841400000000000");
+
+    expect(result).toBe(true);
+    const [urlArg, options] = fetchMock.mock.calls[0];
+    const url = new URL(urlArg);
+    expect(url.pathname).toContain("/17841400000000000/subscribed_apps");
+    expect(url.searchParams.get("subscribed_fields")).toBe("comments,messages,messaging_postbacks");
+    expect(url.searchParams.get("access_token")).toBe("token-abc");
+    expect(options.method).toBe("POST");
+  });
+
+  it("retorna false (nunca lança) quando a API responde com erro", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false }));
+    expect(await subscribeAccountToWebhooks("token-abc", "17841400000000000")).toBe(false);
   });
 });
 

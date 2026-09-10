@@ -170,6 +170,30 @@ export async function fetchInstagramProfile(
   return { username: json.username ?? null };
 }
 
+// Fields mínimos pro MVP (docs/PITCHAT_META_INTEGRATION.md §3) — mesmos já
+// assinados a nível de app.
+const WEBHOOK_FIELDS = ["comments", "messages", "messaging_postbacks"].join(",");
+
+/**
+ * Gap real encontrado no primeiro teste E2E (10/09/2026): assinar o webhook
+ * a nível de APP (App Dashboard → Webhooks, ou POST /app/subscriptions) NÃO
+ * é suficiente — cada conta profissional precisa individualmente "optar" por
+ * mandar eventos pro nosso app, chamando isso com o token DELA. Confirmado
+ * literalmente na doc oficial: "Your app must enable subscriptions by
+ * sending a POST request to the /me/subscribed_apps endpoint with the
+ * subscribed_fields parameter". Sem isso, o app-level subscription existe
+ * mas a conta simplesmente nunca manda nada — nenhum erro, silêncio total.
+ * Chamado logo após o OAuth conectar a conta (ver callback/route.ts).
+ */
+export async function subscribeAccountToWebhooks(accessToken: string, igUserId: string): Promise<boolean> {
+  const url = new URL(`https://graph.instagram.com/${getGraphApiVersion()}/${igUserId}/subscribed_apps`);
+  url.searchParams.set("subscribed_fields", WEBHOOK_FIELDS);
+  url.searchParams.set("access_token", accessToken);
+
+  const res = await fetch(url.toString(), { method: "POST" });
+  return res.ok;
+}
+
 /** Token precisa renovar quando faltar menos de N dias pra expirar (default 10). */
 export function needsRefresh(expiresAt: Date, thresholdDays = 10): boolean {
   const thresholdMs = thresholdDays * 24 * 60 * 60 * 1000;
