@@ -23,6 +23,8 @@ function LoginForm() {
   const urlError = searchParams.get("error");
   const redirect = searchParams.get("redirect") ?? "/dashboard";
 
+  const SIGN_IN_TIMEOUT_MS = 15000;
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
@@ -35,20 +37,43 @@ function LoginForm() {
       return;
     }
 
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    // signInWithPassword normalmente RESOLVE com { error } mesmo pra
+    // credencial inválida — mas pode LANÇAR (rede caiu, extensão do
+    // navegador bloqueando o domínio do Supabase, DNS, etc.). Sem
+    // try/catch/finally, uma exceção aqui deixava o botão preso em
+    // "Entrando..." pra sempre, sem erro nenhum na tela (a causa real do bug
+    // relatado — nunca mais deixar isso acontecer). O timeout cobre o caso
+    // em que a promise nem resolve nem rejeita (ex: extensão engolindo a
+    // request silenciosamente).
+    try {
+      const result = await Promise.race([
+        supabase.auth.signInWithPassword({ email, password }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("TIMEOUT_15S")), SIGN_IN_TIMEOUT_MS)
+        ),
+      ]);
 
-    setLoading(false);
+      if (result.error) {
+        setError(result.error.message);
+        return;
+      }
 
-    if (signInError) {
-      setError(signInError.message);
-      return;
+      router.push(redirect);
+      router.refresh();
+    } catch (err) {
+      const raw = err instanceof Error ? err.message : String(err);
+      if (raw === "TIMEOUT_15S") {
+        setError(
+          `O Supabase não respondeu em ${SIGN_IN_TIMEOUT_MS / 1000}s. Verifique sua conexão e tente de novo.`
+        );
+      } else {
+        // Nunca esconder a mensagem real — só adiciona contexto de que foi
+        // uma falha de rede/exceção, não uma credencial rejeitada.
+        setError(`Falha ao contatar o Supabase: ${raw}`);
+      }
+    } finally {
+      setLoading(false);
     }
-
-    router.push(redirect);
-    router.refresh();
   }
 
   return (
