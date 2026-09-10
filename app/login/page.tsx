@@ -3,6 +3,9 @@
 import { Suspense, useState, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
+import { PitchatMark, PitchatWordmark, SignalMarker } from "@/components/icons/pitchat";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 export default function LoginPage() {
   return (
@@ -79,46 +82,81 @@ function LoginForm() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-6 px-6">
-      <h1 className="text-2xl font-semibold">PITCHAT</h1>
+    <main className="flex min-h-screen bg-bg">
+      {/* Esquerda: presença de marca, sem landing page dentro do login (docs/PITCHAT_DESIGN_SYSTEM.md, seção 32 do briefing) */}
+      <div className="hidden w-1/2 flex-col justify-between border-r border-border-subtle bg-bg-sidebar px-14 py-14 lg:flex">
+        <div className="flex items-center gap-2.5">
+          <PitchatMark className="h-7 w-7 text-signal" />
+          <PitchatWordmark className="text-xl text-text" />
+        </div>
 
-      {urlError === "unauthorized" && (
-        <p className="rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
-          Este e-mail não tem permissão para acessar o PITCHAT.
-        </p>
-      )}
+        <div className="flex flex-col gap-3 text-sm text-text-secondary">
+          <div className="flex items-center gap-2.5">
+            <SignalMarker type="trigger" />
+            <span>message</span>
+          </div>
+          <div className="ml-[7px] h-4 w-px bg-border" />
+          <div className="flex items-center gap-2.5">
+            <SignalMarker type="logic" />
+            <span>keyword</span>
+          </div>
+          <div className="ml-[7px] h-4 w-px bg-border" />
+          <div className="flex items-center gap-2.5">
+            <SignalMarker type="action" active />
+            <span className="text-text">reply</span>
+          </div>
+        </div>
 
-      <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-        <input
-          type="email"
-          required
-          placeholder="E-mail"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="rounded border px-3 py-2"
-        />
-        <input
-          type="password"
-          required
-          placeholder="Senha"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className="rounded border px-3 py-2"
-        />
-        {error && <p className="text-sm text-red-600">{error}</p>}
-        <button
-          type="submit"
-          disabled={loading}
-          className="rounded bg-black px-3 py-2 text-white disabled:opacity-50"
-        >
-          {loading ? "Entrando..." : "Entrar"}
-        </button>
-      </form>
+        <p className="text-xs text-text-muted">Automação de Instagram operada como ferramenta.</p>
+      </div>
 
-      <p className="text-xs opacity-60">
-        Cadastro público desativado. Usuário criado manualmente no Supabase Auth,
-        e-mail liberado em <code>PITCHAT_ALLOWED_EMAILS</code>.
-      </p>
+      {/* Direita: form */}
+      <div className="flex w-full flex-1 flex-col justify-center px-8 lg:w-1/2 lg:px-16">
+        <div className="mx-auto w-full max-w-sm">
+          <div className="mb-8 flex items-center gap-2 lg:hidden">
+            <PitchatMark className="h-6 w-6 text-signal" />
+            <PitchatWordmark className="text-lg text-text" />
+          </div>
+
+          <h1 className="text-xl font-semibold text-text">Entrar no PITCHAT</h1>
+
+          {urlError === "unauthorized" && (
+            <p className="mt-4 rounded-[var(--radius-panel-sm)] border border-danger bg-danger-soft px-3.5 py-2.5 text-sm text-text">
+              Este e-mail não tem permissão para acessar o PITCHAT.
+            </p>
+          )}
+
+          <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-3">
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="email" className="text-xs text-text-muted">
+                E-mail
+              </label>
+              <Input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="password" className="text-xs text-text-muted">
+                Senha
+              </label>
+              <Input
+                id="password"
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </div>
+            {error && <p className="text-sm text-danger">{error}</p>}
+            <Button type="submit" variant="primary" disabled={loading} className="mt-1 w-full">
+              {loading ? "Entrando…" : "Entrar"}
+            </Button>
+          </form>
+
+          <p className="mt-6 text-xs text-text-muted">
+            Cadastro público desativado. Usuário criado manualmente no Supabase Auth, e-mail liberado em{" "}
+            <code className="font-mono">PITCHAT_ALLOWED_EMAILS</code>.
+          </p>
+        </div>
+      </div>
     </main>
   );
 }

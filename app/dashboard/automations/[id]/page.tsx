@@ -1,9 +1,11 @@
 import Link from "next/link";
+import { ChevronLeft } from "lucide-react";
 import { notFound, redirect } from "next/navigation";
 import { getAuthContext } from "@/lib/auth/session";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { loadAutomationForWorkspace, loadDraftVersion, loadVersionById } from "@/lib/automation/repo";
 import { decompileGraphToFlow } from "@/lib/automation/flow-spec";
+import { StatusIndicator, type AutomationStatus } from "@/components/ui/status-indicator";
 import { FlowEditor } from "./flow-editor";
 
 export default async function AutomationEditorPage({ params }: { params: Promise<{ id: string }> }) {
@@ -17,21 +19,36 @@ export default async function AutomationEditorPage({ params }: { params: Promise
   const automation = await loadAutomationForWorkspace(admin, id, auth.workspace.id);
   if (!automation) notFound();
 
+  const { data: profile } = await admin.from("profiles").select("name").eq("id", automation.profile_id).maybeSingle();
+  const { data: socialAccount } = await admin
+    .from("social_accounts")
+    .select("username")
+    .eq("profile_id", automation.profile_id)
+    .eq("status", "connected")
+    .maybeSingle();
+
   const draft = await loadDraftVersion(admin, id);
   const version = draft ?? (automation.current_version_id ? await loadVersionById(admin, automation.current_version_id) : null);
 
   const spec = version ? decompileGraphToFlow(version.graph) : { steps: [] };
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-12">
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">{automation.name}</h1>
-          {automation.description && <p className="text-sm opacity-60">{automation.description}</p>}
-        </div>
-        <Link href="/dashboard/automations" className="text-sm underline opacity-70">
-          Voltar
+    <>
+      <div className="px-6 pb-5 pt-7 md:px-8 md:pt-8">
+        <Link href="/dashboard/automations" className="mb-4 inline-flex items-center gap-1 text-sm text-text-secondary hover:text-text">
+          <ChevronLeft className="h-3.5 w-3.5" /> Automations
         </Link>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <div className="flex items-center gap-3">
+              <h1 className="text-[26px] font-semibold tracking-[-0.025em] text-text">{automation.name}</h1>
+              <StatusIndicator status={automation.status as AutomationStatus} />
+            </div>
+            <p className="mt-1 text-sm text-text-secondary">
+              Instagram{socialAccount?.username ? ` · @${socialAccount.username}` : profile ? ` · ${profile.name}` : ""}
+            </p>
+          </div>
+        </div>
       </div>
 
       <FlowEditor
@@ -40,6 +57,6 @@ export default async function AutomationEditorPage({ params }: { params: Promise
         decompileFailed={version !== null && spec === null}
         hasDraft={!!draft}
       />
-    </main>
+    </>
   );
 }

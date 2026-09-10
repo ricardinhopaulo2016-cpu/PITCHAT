@@ -2,6 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { MoreHorizontal } from "lucide-react";
 
 type Props = {
   automationId: string;
@@ -39,39 +41,67 @@ export function AutomationRowActions({ automationId, status, hasPublishedVersion
   }
 
   return (
-    <div className="flex items-center gap-2 text-sm">
-      <button onClick={duplicate} disabled={busy} className="underline opacity-70">
-        Duplicate
-      </button>
-      {status !== "active" && status !== "archived" && (
-        <button
-          onClick={() => setStatus("active")}
-          disabled={busy}
-          title={hasPublishedVersion ? undefined : "Publique uma versão antes de ativar"}
-          className="underline text-green-700 disabled:opacity-40"
-        >
-          Activate
-        </button>
-      )}
-      {status === "active" && (
-        <button onClick={() => setStatus("paused")} disabled={busy} className="underline text-amber-700">
-          Pause
-        </button>
-      )}
-      {status !== "archived" && (
-        <button
-          onClick={() => {
-            if (confirm("Arquivar essa automação? Isso é permanente no V1 (arquivada não pode ser reativada — duplique se precisar).")) {
-              setStatus("archived");
-            }
-          }}
-          disabled={busy}
-          className="underline text-red-600"
-        >
-          Archive
-        </button>
-      )}
-      {error && <span className="text-red-600">{error}</span>}
+    <div className="flex items-center justify-end gap-2">
+      {error && <span className="text-xs text-danger">{error}</span>}
+      <DropdownMenu.Root>
+        <DropdownMenu.Trigger asChild>
+          <button
+            disabled={busy}
+            aria-label="Mais ações"
+            className="rounded-[var(--radius-panel-sm)] p-1.5 text-text-muted transition-colors duration-[var(--motion-fast)] hover:bg-surface-3 hover:text-text"
+          >
+            <MoreHorizontal className="h-4 w-4" />
+          </button>
+        </DropdownMenu.Trigger>
+        <DropdownMenu.Portal>
+          <DropdownMenu.Content
+            align="end"
+            sideOffset={4}
+            className="w-44 rounded-[var(--radius-panel-lg)] border border-border bg-surface-elevated p-1 text-sm shadow-[var(--shadow-elevated)] data-[state=open]:animate-[panel-in_var(--motion-ui)_var(--ease-out)]"
+          >
+            <DropdownMenu.Item
+              onSelect={duplicate}
+              className="cursor-pointer rounded-[var(--radius-panel-sm)] px-2.5 py-1.5 text-text outline-none data-[highlighted]:bg-surface-2"
+            >
+              Duplicar
+            </DropdownMenu.Item>
+            {status !== "active" && status !== "archived" && (
+              <DropdownMenu.Item
+                onSelect={() => setStatus("active")}
+                disabled={!hasPublishedVersion}
+                title={hasPublishedVersion ? undefined : "Publique uma versão antes de ativar"}
+                className="cursor-pointer rounded-[var(--radius-panel-sm)] px-2.5 py-1.5 text-success outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-40 data-[highlighted]:bg-success-soft"
+              >
+                Ativar
+              </DropdownMenu.Item>
+            )}
+            {status === "active" && (
+              <DropdownMenu.Item
+                onSelect={() => setStatus("paused")}
+                className="cursor-pointer rounded-[var(--radius-panel-sm)] px-2.5 py-1.5 text-warning outline-none data-[highlighted]:bg-warning-soft"
+              >
+                Pausar
+              </DropdownMenu.Item>
+            )}
+            {status !== "archived" && (
+              <DropdownMenu.Item
+                onSelect={() => {
+                  if (
+                    confirm(
+                      "Arquivar essa automação? Isso é permanente no V1 (arquivada não pode ser reativada — duplique se precisar)."
+                    )
+                  ) {
+                    setStatus("archived");
+                  }
+                }}
+                className="cursor-pointer rounded-[var(--radius-panel-sm)] px-2.5 py-1.5 text-danger outline-none data-[highlighted]:bg-danger-soft"
+              >
+                Arquivar
+              </DropdownMenu.Item>
+            )}
+          </DropdownMenu.Content>
+        </DropdownMenu.Portal>
+      </DropdownMenu.Root>
     </div>
   );
 }

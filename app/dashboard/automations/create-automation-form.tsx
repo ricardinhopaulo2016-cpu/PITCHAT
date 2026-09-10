@@ -2,6 +2,9 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 
 export function CreateAutomationForm({ profiles }: { profiles: { id: string; name: string }[] }) {
   const router = useRouter();
@@ -41,47 +44,37 @@ export function CreateAutomationForm({ profiles }: { profiles: { id: string; nam
   }
 
   return (
-    <form onSubmit={handleCreate} className="flex flex-wrap items-end gap-3 rounded border p-4">
-      <div className="flex flex-col gap-1">
-        <label className="text-xs opacity-60">Profile</label>
-        <select
-          value={profileId}
-          onChange={(e) => setProfileId(e.target.value)}
-          className="rounded border px-2 py-1.5 text-sm"
-        >
+    <form
+      onSubmit={handleCreate}
+      className="flex flex-wrap items-end gap-3 rounded-[var(--radius-panel-lg)] border border-border-subtle bg-surface-1 p-4"
+    >
+      <div className="flex flex-col gap-1.5">
+        <label className="text-xs text-text-muted">Profile</label>
+        <Select value={profileId} onChange={(e) => setProfileId(e.target.value)} className="w-44">
           {profiles.map((p) => (
             <option key={p.id} value={p.id}>
               {p.name}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
-      <div className="flex flex-col gap-1">
-        <label className="text-xs opacity-60">Nome da automação</label>
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Ex: Comentário → DM"
-          className="rounded border px-2 py-1.5 text-sm"
-        />
+      <div className="flex flex-col gap-1.5">
+        <label className="text-xs text-text-muted">Nome da automação</label>
+        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: Comentário → DM" className="w-56" />
       </div>
-      <button
-        type="submit"
-        disabled={busy !== null || !name.trim()}
-        className="rounded border px-3 py-1.5 text-sm hover:bg-gray-50"
-      >
-        {busy === "create" ? "Criando…" : "Create"}
-      </button>
-      <button
+      <Button type="submit" variant="primary" disabled={busy !== null || !name.trim()}>
+        {busy === "create" ? "Criando…" : "Nova automação"}
+      </Button>
+      <Button
         type="button"
+        variant="secondary"
         onClick={handleSeedExample}
         disabled={busy !== null}
-        className="rounded border px-3 py-1.5 text-sm hover:bg-gray-50"
         title="Cria o flow de referência do MVP: comentário → keyword → public reply → private reply → quick reply → link → delay → follow-up"
       >
-        {busy === "seed" ? "Criando…" : "Criar exemplo (Instagram Comment → DM Test)"}
-      </button>
-      {error && <p className="w-full text-sm text-red-600">{error}</p>}
+        {busy === "seed" ? "Criando…" : "Criar exemplo"}
+      </Button>
+      {error && <p className="w-full text-sm text-danger">{error}</p>}
     </form>
   );
 }

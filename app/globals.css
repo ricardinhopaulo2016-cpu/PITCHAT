@@ -1,25 +1,231 @@
 @import "tailwindcss";
 
+/**
+ * PITCHAT — Signal Desk design tokens.
+ * Ver docs/PITCHAT_DESIGN_SYSTEM.md — nunca hex solto em componente,
+ * sempre um destes tokens (ou uma var(--color-*) do Tailwind theme abaixo).
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Superfícies */
+  --bg: #0e0f0d;
+  --bg-sidebar: #10110f;
+  --surface-1: #141512;
+  --surface-2: #191a17;
+  --surface-3: #1e201c;
+  --surface-elevated: #20221e;
+
+  /* Bordas */
+  --border-subtle: #262823;
+  --border: #32352e;
+  --border-strong: #484c42;
+
+  /* Texto */
+  --text: #eeece4;
+  --text-secondary: #b1b3aa;
+  --text-muted: #777b72;
+
+  /* Signal (marca/ação — nunca mais que 5% da tela) */
+  --signal: #f2b441;
+  --signal-bright: #ffc14d;
+  --signal-hover: #ffc35c;
+  --signal-pressed: #d99a2b;
+  --signal-soft: rgba(242, 180, 65, 0.11);
+  --signal-on: #14140f; /* texto sobre fundo signal — near-black, nunca branco puro */
+
+  /* Semânticas */
+  --success: #73b987;
+  --success-soft: rgba(115, 185, 135, 0.12);
+  --warning: #d9a957;
+  --warning-soft: rgba(217, 169, 87, 0.12);
+  --danger: #dd6b64;
+  --danger-soft: rgba(221, 107, 100, 0.12);
+  --info: #8da8b7;
+
+  /* Spacing scale — docs/PITCHAT_DESIGN_SYSTEM.md §7 */
+  --space-1: 4px;
+  --space-2: 6px;
+  --space-3: 10px;
+  --space-4: 14px;
+  --space-5: 20px;
+  --space-6: 28px;
+  --space-7: 40px;
+  --space-8: 56px;
+
+  /* Radius — geometria, não "tudo redondo" */
+  --radius-input: 5px;
+  --radius-button: 5px;
+  --radius-panel-sm: 6px;
+  --radius-panel-lg: 8px;
+  --radius-dialog: 8px;
+
+  /* Motion */
+  --motion-fast: 90ms;
+  --motion-ui: 140ms;
+  --motion-panel: 180ms;
+  --motion-emphasis: 220ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+
+  /* Elevação — só dropdown/popover/dialog/floating menu usam shadow */
+  --shadow-elevated: 0 8px 24px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.3);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: system-ui, sans-serif;
+  --color-bg: var(--bg);
+  --color-bg-sidebar: var(--bg-sidebar);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-surface-elevated: var(--surface-elevated);
+
+  --color-border-subtle: var(--border-subtle);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+
+  --color-text: var(--text);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+
+  --color-signal: var(--signal);
+  --color-signal-bright: var(--signal-bright);
+  --color-signal-hover: var(--signal-hover);
+  --color-signal-pressed: var(--signal-pressed);
+  --color-signal-soft: var(--signal-soft);
+  --color-signal-on: var(--signal-on);
+
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-info: var(--info);
+
+  --font-sans: var(--font-ibm-plex-sans), system-ui, sans-serif;
+  --font-mono: var(--font-ibm-plex-mono), ui-monospace, monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  border-color: var(--border);
+}
+
+html {
+  color-scheme: dark;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: var(--bg);
+  color: var(--text);
   font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Foco visível — nunca `outline: none` sem substituto (acessibilidade §44) */
+:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+  border-radius: var(--radius-input);
+}
+
+::selection {
+  background: var(--signal-soft);
+  color: var(--text);
+}
+
+/* Scrollbar discreta, coerente com a paleta (sem ser um "feature" visual) */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 999px;
+  border: 2px solid var(--bg);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-strong);
+}
+
+/* Dados atualizando de verdade (não decorativo) — signal-soft -> transparente */
+@keyframes pitchat-data-update {
+  from {
+    background-color: var(--signal-soft);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+.pitchat-data-update {
+  animation: pitchat-data-update 600ms var(--ease-out);
+}
+
+/* Pulse de status — só quando há processamento real por trás, nunca decorativo */
+@keyframes pitchat-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.pitchat-pulse {
+  animation: pitchat-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes toast-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* Dropdown/popover/dialog — opacity + translateY curto, nunca scale */
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }

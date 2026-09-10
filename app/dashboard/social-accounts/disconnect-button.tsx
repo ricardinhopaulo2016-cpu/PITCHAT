@@ -16,7 +16,7 @@ export function DisconnectButton({ socialAccountId }: { socialAccountId: string 
   }
 
   return (
-    <button onClick={handleClick} disabled={busy} className="text-sm text-red-600 underline">
+    <button onClick={handleClick} disabled={busy} className="text-sm text-danger hover:text-danger/80">
       {busy ? "Desconectando…" : "Desconectar"}
     </button>
   );

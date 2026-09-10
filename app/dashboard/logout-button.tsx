@@ -15,7 +15,7 @@ export function LogoutButton() {
   }
 
   return (
-    <button onClick={handleLogout} className="text-sm underline opacity-70">
+    <button onClick={handleLogout} className="w-full text-left">
       Sair
     </button>
   );
