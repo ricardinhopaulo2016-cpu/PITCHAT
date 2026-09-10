@@ -8,9 +8,9 @@ Existe código e testes (com mocks) para os quatro fluxos abaixo, mas **nenhum r
 
 | Componente | Código | Status |
 |---|---|---|
-| OAuth (`lib/meta/oauth.ts`, `app/api/auth/meta/*`) | Completo | `IMPLEMENTED / NOT E2E VERIFIED` |
-| Webhook (`app/api/webhooks/meta/route.ts`, `lib/meta/events.ts`) | Completo | `IMPLEMENTED / NOT E2E VERIFIED` |
-| Private Reply (`lib/meta/client.ts::sendPrivateReply`) | Completo | `IMPLEMENTED / NOT E2E VERIFIED` |
+| OAuth (`lib/meta/oauth.ts`, `app/api/auth/meta/*`) | Completo | **`E2E VERIFIED (10/09/2026)`** — conta `papagaio_milhas` conectada de verdade, token real, permissions reais |
+| Webhook — recebimento/assinatura/persistência (`app/api/webhooks/meta/route.ts`) | Completo | `IMPLEMENTED / NOT E2E VERIFIED` — testado só com payload sintético assinado; **bloqueado pra tráfego real** (ver §1.8 — precisa Live + Advanced Access + Business Verification, nunca entregue em Development mode) |
+| Private Reply (`lib/meta/client.ts::sendPrivateReply`) | Completo | `IMPLEMENTED / NOT E2E VERIFIED` — bloqueado até o webhook disparar um run de verdade (não há como testar isoladamente sem um comentário real chegando) |
 | Send API — texto/quick reply (`lib/meta/client.ts::sendTextMessage/sendQuickReplies`) | Completo | `IMPLEMENTED / NOT E2E VERIFIED` |
 
 Atualizar esta tabela pra `E2E VERIFIED (dd/mm/aaaa)` só depois de uma chamada real bem-sucedida, com o `messageId`/status HTTP retornado pela Meta anexado ao relatório de fase.
@@ -48,14 +48,23 @@ O PITCHAT terá **Meta App próprio** — não reutilizar app de outro projeto (
    - `instagram_business_manage_comments`
    - (`instagram_business_content_publish` só seria necessária se reativarmos publicação no futuro — **não solicitar agora**, escopo congelado)
    Fontes: https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/ , https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login/business-login
-8. **Modo Development (antes de qualquer App Review)** — confirmado em https://developers.facebook.com/docs/development/build-and-test/app-modes/:
-   - Só usuários com **Role no app** (Administrator, Developer ou Tester — adicionados em **App Dashboard → App roles**) conseguem usar o app nesse modo.
-   - Citação literal: *"Apps in Development mode cannot be searched for by the public through our tools and APIs"* — isso não afeta o PITCHAT (não dependemos de listagem pública).
-   - Nesse modo, as 3 permissions acima **já funcionam sem App Review**, desde que a conta Instagram conectada pertença a alguém com Role no app (ou ao Business Portfolio dono do app) — é exatamente o caso da conta de teste do passo 4. Suficiente pra todo o MVP e pro teste E2E.
-9. **Só quando for gerenciar conta de cliente que vocês não possuem** (modelo Tech Provider/SaaS multi-tenant — caso do PITCHAT no médio prazo): será necessário sair do modo Development (ir a **Live**) com **Advanced Access**, que exige **App Review + Business Verification** juntos (App Dashboard → seção "Business verification"). Processo de review pede: ícone do app 1024×1024, política de privacidade, categoria, email de negócio, e pra cada permission um screencast demonstrando o uso real na UI. **Não é necessário pra nenhum passo do teste E2E com sua própria conta.**
+8. ⚠️ **CORREÇÃO (10/09/2026) — item anterior aqui estava ERRADO.** Eu tinha documentado que Standard Access + Development Mode bastavam pra testar webhook com a própria conta. **Isso é falso especificamente para webhooks.** Confirmado literalmente, duas vezes, na doc oficial de webhooks: *"Apps must be set to **Live** in the App Dashboard to receive webhook notifications."* — e a tabela de requisitos da mesma página, pra "Business Login for Instagram" (nosso produto), lista:
+
+   | Requisito | Valor |
+   |---|---|
+   | Access level | **Advanced Access** |
+   | Business Verification | **Required** |
+
+   Ou seja: **mesmo só pra receber webhook da sua própria conta de teste**, o app precisa estar em **Live** (não Development), com **Advanced Access** nas permissions de webhook, o que por sua vez exige **Business Verification** completa. Descoberto na prática: fizemos toda a infraestrutura (app-level subscription, account-level subscription, assinatura de payload) 100% correta e confirmada ativa via API, e mesmo assim **nenhum webhook foi entregue** depois de comentários reais — porque o app nunca saiu de Development mode.
+   Fonte: https://developers.facebook.com/docs/instagram-platform/webhooks (seções "Requirements" e "Limitations").
+9. **Caminho real pra destravar** (nenhum atalho conhecido):
+   1. **Business Verification** — App Dashboard → seção "Business verification" → vincular/verificar o Business Portfolio dono do app (documentos da empresa).
+   2. **App Review** solicitando **Advanced Access** pras permissions usadas nos webhooks (`instagram_business_manage_comments`, `instagram_business_manage_messages`) — ícone do app 1024×1024, política de privacidade, categoria, email de negócio, e um screencast por permission demonstrando o uso real.
+   3. Só depois dos dois acima aprovados: trocar o app pra **Live** no App Dashboard.
+   **OAuth, envio de mensagem (Send API) e Private Reply continuam funcionando em Development/Standard Access** — só a ENTREGA de webhook exige isso. Não precisa esperar o Review pra continuar testando o resto manualmente (ex: chamar Send API direto), só o gatilho automático via comentário real fica bloqueado até lá.
 10. Preencha o `.env.local` do PITCHAT com os valores gerados (ver §9 deste doc e `.env.example`).
 
-**Nada do desenvolvimento abaixo depende de você ter terminado esse checklist** — o código já foi implementado e será mantido evoluindo; só o *teste contra API real* fica bloqueado até o Meta App existir.
+**Nada do desenvolvimento abaixo depende de você ter terminado esse checklist** — o código já foi implementado e será mantido evoluindo; só o *teste automático via webhook contra API real* fica bloqueado até o app estar Live + Advanced Access + Business Verification.
 
 ### Requisito de Página do Facebook — confirmação
 
