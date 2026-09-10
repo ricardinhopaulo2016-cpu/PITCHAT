@@ -45,6 +45,25 @@ export async function POST(request: Request) {
   const signature = request.headers.get("x-hub-signature-256");
 
   if (!verifyMetaWebhookSignature(rawBody, signature, appSecret)) {
+    // Gap real de observabilidade descoberto durante o primeiro teste E2E
+    // (10/09/2026): antes disso, uma assinatura inválida só retornava 401 e
+    // NUNCA gravava nada — se a Meta de fato tentasse entregar algo e fosse
+    // rejeitada aqui, ficava invisível pra sempre (indistinguível de "a Meta
+    // nunca tentou"). Agora persiste um registro mesmo na rejeição, pra
+    // sempre dar pra diferenciar os dois casos. Nunca processa o payload
+    // (não confiamos nele sem assinatura válida) — só guarda pra diagnóstico.
+    const externalEventId = createHash("sha256").update(rawBody).digest("hex");
+    await admin.from("webhook_events").upsert(
+      {
+        provider: "meta",
+        external_event_id: externalEventId,
+        event_type: "invalid_signature",
+        payload: { rawBodyPreview: rawBody.slice(0, 2000) },
+        status: "failed",
+        last_error: { reason: "INVALID_SIGNATURE", signatureHeaderPresent: !!signature },
+      },
+      { onConflict: "provider,external_event_id", ignoreDuplicates: true }
+    );
     return NextResponse.json({ error: "INVALID_SIGNATURE" }, { status: 401 });
   }
 
