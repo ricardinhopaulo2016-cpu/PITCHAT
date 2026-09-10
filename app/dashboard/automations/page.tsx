@@ -27,18 +27,16 @@ export default async function AutomationsPage() {
   const admin = getSupabaseAdminClient();
   if (!admin) redirect("/setup");
 
-  const { data: profiles } = await admin
-    .from("profiles")
-    .select("id, name")
-    .eq("workspace_id", auth.workspace.id)
-    .returns<ProfileRow[]>();
-
-  const { data: automations } = await admin
-    .from("automations")
-    .select("id, name, status, profile_id, current_version_id, updated_at")
-    .eq("workspace_id", auth.workspace.id)
-    .order("updated_at", { ascending: false })
-    .returns<AutomationRow[]>();
+  // profiles e automations não dependem um do outro — paraleliza.
+  const [{ data: profiles }, { data: automations }] = await Promise.all([
+    admin.from("profiles").select("id, name").eq("workspace_id", auth.workspace.id).returns<ProfileRow[]>(),
+    admin
+      .from("automations")
+      .select("id, name, status, profile_id, current_version_id, updated_at")
+      .eq("workspace_id", auth.workspace.id)
+      .order("updated_at", { ascending: false })
+      .returns<AutomationRow[]>(),
+  ]);
 
   const automationIds = (automations ?? []).map((a) => a.id);
   const { data: runs } =

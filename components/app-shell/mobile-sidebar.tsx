@@ -8,6 +8,7 @@ import { Menu, X } from "lucide-react";
 import { PitchatMark, PitchatWordmark } from "@/components/icons/pitchat";
 import { NAV_ITEMS } from "./nav-items";
 import { LogoutButton } from "@/app/dashboard/logout-button";
+import { SoundToggle } from "@/components/ui/sound-toggle";
 
 /** Sidebar vira drawer no mobile — nada essencial desaparece (docs/PITCHAT_DESIGN_SYSTEM.md, seção 43 do briefing). */
 export function MobileSidebar({ workspaceName, email }: { workspaceName: string; email: string }) {
@@ -78,7 +79,10 @@ export function MobileSidebar({ workspaceName, email }: { workspaceName: string;
             <p className="text-xs text-text-muted">Workspace</p>
             <p className="truncate text-text">{workspaceName}</p>
             <p className="truncate text-xs text-text-muted">{email}</p>
-            <div className="mt-2 text-danger">
+            <div className="mt-2 -mx-2.5">
+              <SoundToggle />
+            </div>
+            <div className="mt-1 text-danger">
               <LogoutButton />
             </div>
           </div>

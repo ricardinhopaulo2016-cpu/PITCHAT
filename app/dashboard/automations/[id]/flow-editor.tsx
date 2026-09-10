@@ -296,7 +296,7 @@ function AddStepControl({ onAdd }: { onAdd: (type: FlowStepType) => void }) {
         <DropdownMenu.Trigger asChild>
           <button
             aria-label="Adicionar step"
-            className="relative z-10 flex h-5 w-5 items-center justify-center rounded-full border border-border bg-surface-2 text-text-muted opacity-0 transition-opacity duration-[var(--motion-fast)] hover:border-signal hover:text-signal focus-visible:opacity-100 group-hover:opacity-100"
+            className="relative z-10 flex h-5 w-5 items-center justify-center rounded-full border border-border bg-surface-2 text-text-muted opacity-40 transition-opacity duration-[var(--motion-fast)] hover:border-signal hover:text-signal hover:opacity-100 focus-visible:opacity-100 group-hover:opacity-100 md:opacity-0"
           >
             <Plus className="h-3 w-3" />
           </button>

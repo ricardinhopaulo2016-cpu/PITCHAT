@@ -47,7 +47,7 @@ Não usar preto/branco puro em grandes superfícies. Distribuição: **85% neutr
 
 --text: #EEECE4;
 --text-secondary: #B1B3AA;
---text-muted: #777B72;
+--text-muted: #82867B; /* ajustado pra 4.9:1 contra surface-1 — contraste AA real (ver §12) */
 
 /* Signal (marca/ação) */
 --signal: #F2B441;

@@ -22,7 +22,7 @@
   /* Texto */
   --text: #eeece4;
   --text-secondary: #b1b3aa;
-  --text-muted: #777b72;
+  --text-muted: #82867b; /* ajustado de #777b72 — original ficava em 4.24:1 (abaixo do AA 4.5:1) contra surface-1 */
 
   /* Signal (marca/ação — nunca mais que 5% da tela) */
   --signal: #f2b441;

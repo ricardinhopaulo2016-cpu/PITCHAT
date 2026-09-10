@@ -7,6 +7,7 @@ import { MoreHorizontal } from "lucide-react";
 import { PitchatMark, PitchatWordmark } from "@/components/icons/pitchat";
 import { NAV_ITEMS } from "./nav-items";
 import { LogoutButton } from "@/app/dashboard/logout-button";
+import { SoundToggle } from "@/components/ui/sound-toggle";
 
 /**
  * ~216px, faz parte da estrutura (não é floating rounded sidebar). Item
@@ -79,6 +80,10 @@ export function Sidebar({ workspaceName, email }: { workspaceName: string; email
             sideOffset={6}
             className="w-[188px] rounded-[var(--radius-panel-lg)] border border-border bg-surface-elevated p-1 shadow-[var(--shadow-elevated)] data-[state=open]:animate-[panel-in_var(--motion-ui)_var(--ease-out)]"
           >
+            <DropdownMenu.Item onSelect={(e) => e.preventDefault()} className="outline-none">
+              <SoundToggle />
+            </DropdownMenu.Item>
+            <DropdownMenu.Separator className="my-1 h-px bg-border-subtle" />
             <DropdownMenu.Item asChild>
               <div className="rounded-[var(--radius-panel-sm)] px-2 py-1.5 text-sm text-danger outline-none data-[highlighted]:bg-danger-soft">
                 <LogoutButton />

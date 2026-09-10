@@ -46,25 +46,19 @@ export default async function SocialAccountsPage({
   const admin = getSupabaseAdminClient();
   if (!admin) redirect("/setup");
 
-  const { data: profiles } = await admin
-    .from("profiles")
-    .select("id, name, slug")
-    .eq("workspace_id", auth.workspace.id)
-    .returns<ProfileRow[]>();
-
-  const { data: socialAccounts } = await admin
-    .from("social_accounts")
-    .select("id, profile_id, username, status, status_detail, token_expires_at")
-    .eq("workspace_id", auth.workspace.id)
-    .eq("platform", "instagram")
-    .neq("status", "revoked")
-    .returns<SocialAccountRow[]>();
-
-  const { data: activeAutomations } = await admin
-    .from("automations")
-    .select("profile_id")
-    .eq("workspace_id", auth.workspace.id)
-    .eq("status", "active");
+  // As três queries são independentes entre si — paralelizar em vez de
+  // esperar uma pela outra economiza ~2 round-trips ao Postgres por load.
+  const [{ data: profiles }, { data: socialAccounts }, { data: activeAutomations }] = await Promise.all([
+    admin.from("profiles").select("id, name, slug").eq("workspace_id", auth.workspace.id).returns<ProfileRow[]>(),
+    admin
+      .from("social_accounts")
+      .select("id, profile_id, username, status, status_detail, token_expires_at")
+      .eq("workspace_id", auth.workspace.id)
+      .eq("platform", "instagram")
+      .neq("status", "revoked")
+      .returns<SocialAccountRow[]>(),
+    admin.from("automations").select("profile_id").eq("workspace_id", auth.workspace.id).eq("status", "active"),
+  ]);
 
   const activeCountByProfile = new Map<string, number>();
   for (const a of activeAutomations ?? []) {

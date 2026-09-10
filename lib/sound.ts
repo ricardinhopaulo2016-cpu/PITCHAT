@@ -21,12 +21,28 @@ export function isSoundEnabled(): boolean {
   }
 }
 
+// Pub-sub mínimo pra alimentar useSyncExternalStore no componente de toggle —
+// é o jeito correto do React de ler estado externo (localStorage) sem cair
+// no anti-padrão "setState síncrono dentro de useEffect" (react-hooks/set-state-in-effect).
+type Listener = () => void;
+const listeners = new Set<Listener>();
+
+export function subscribeSoundPreference(listener: Listener): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+export function getSoundPreferenceServerSnapshot(): boolean {
+  return false; // SSR nunca tem preferência real — evita mismatch de hidratação
+}
+
 export function setSoundEnabled(enabled: boolean): void {
   try {
     window.localStorage.setItem(STORAGE_KEY, enabled ? "1" : "0");
   } catch {
     // Se não der pra persistir, a sessão atual ainda funciona via estado do componente.
   }
+  listeners.forEach((listener) => listener());
 }
 
 type Cue = "success" | "error" | "live-event";

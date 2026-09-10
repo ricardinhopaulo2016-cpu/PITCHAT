@@ -19,15 +19,17 @@ export default async function AutomationEditorPage({ params }: { params: Promise
   const automation = await loadAutomationForWorkspace(admin, id, auth.workspace.id);
   if (!automation) notFound();
 
-  const { data: profile } = await admin.from("profiles").select("name").eq("id", automation.profile_id).maybeSingle();
-  const { data: socialAccount } = await admin
-    .from("social_accounts")
-    .select("username")
-    .eq("profile_id", automation.profile_id)
-    .eq("status", "connected")
-    .maybeSingle();
-
-  const draft = await loadDraftVersion(admin, id);
+  // Independentes entre si (só dependem do automation já carregado) — paraleliza.
+  const [{ data: profile }, { data: socialAccount }, draft] = await Promise.all([
+    admin.from("profiles").select("name").eq("id", automation.profile_id).maybeSingle(),
+    admin
+      .from("social_accounts")
+      .select("username")
+      .eq("profile_id", automation.profile_id)
+      .eq("status", "connected")
+      .maybeSingle(),
+    loadDraftVersion(admin, id),
+  ]);
   const version = draft ?? (automation.current_version_id ? await loadVersionById(admin, automation.current_version_id) : null);
 
   const spec = version ? decompileGraphToFlow(version.graph) : { steps: [] };
