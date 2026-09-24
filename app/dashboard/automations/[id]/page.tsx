@@ -19,8 +19,12 @@ export default async function AutomationEditorPage({ params }: { params: Promise
   const automation = await loadAutomationForWorkspace(admin, id, auth.workspace.id);
   if (!automation) notFound();
 
-  // Independentes entre si (só dependem do automation já carregado) — paraleliza.
-  const [{ data: profile }, { data: socialAccount }, draft] = await Promise.all([
+  // Independentes entre si (só dependem do automation já carregado) —
+  // paraleliza. `publishedVersion` só é usada quando não existe draft (linha
+  // abaixo), mas buscar ela já em paralelo não muda o resultado — só evita
+  // um 4º round-trip sequencial no caso comum de automação sem rascunho
+  // pendente (reauditoria HEAD 24/09/2026).
+  const [{ data: profile }, { data: socialAccount }, draft, publishedVersion] = await Promise.all([
     admin.from("profiles").select("name").eq("id", automation.profile_id).maybeSingle(),
     admin
       .from("social_accounts")
@@ -29,8 +33,9 @@ export default async function AutomationEditorPage({ params }: { params: Promise
       .eq("status", "connected")
       .maybeSingle(),
     loadDraftVersion(admin, id),
+    automation.current_version_id ? loadVersionById(admin, automation.current_version_id) : Promise.resolve(null),
   ]);
-  const version = draft ?? (automation.current_version_id ? await loadVersionById(admin, automation.current_version_id) : null);
+  const version = draft ?? publishedVersion;
 
   const spec = version ? decompileGraphToFlow(version.graph) : { steps: [] };
 
