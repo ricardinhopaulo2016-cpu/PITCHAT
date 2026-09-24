@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 import { verifyMetaWebhookSignature } from "@/lib/meta/signature";
+import { getWebhookSigningSecret } from "@/lib/meta/webhook-secret";
 import { classifyWebhookEventType } from "@/lib/meta/events";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { scheduleWebhookProcessing, isQstashConfigured } from "@/lib/qstash";
@@ -31,22 +32,9 @@ export async function GET(request: Request) {
  * e enfileira (seção 6 do briefing). Resposta rápida é o que importa.
  */
 export async function POST(request: Request) {
-  // Achado real, confirmado ao vivo byte a byte em 24/09/2026 (comparando
-  // HMAC-SHA256 dos bytes brutos recebidos contra as duas chaves do
-  // projeto): o webhook do produto "Instagram API with Instagram Login" é
-  // assinado com o INSTAGRAM APP SECRET, não com o Meta App Secret
-  // "principal" (`META_APP_SECRET`, usado só pra subscriptions a nível de
-  // app — ver lib/meta/oauth.ts::subscribeAccountToWebhooks). Faz sentido
-  // architeturalmente: OAuth inteiro já usa a identidade do Instagram App
-  // (`INSTAGRAM_APP_ID`/`INSTAGRAM_APP_SECRET`, ver lib/meta/oauth.ts) — a
-  // Meta assina o webhook desse produto com o secret do MESMO app, não do
-  // app "guarda-chuva". `META_APP_SECRET` nunca validou nenhuma entrega real
-  // desde o início do projeto; `INSTAGRAM_APP_SECRET` sim. Reaproveitado
-  // aqui explicitamente (em vez de uma env var nova só pra isso) porque já é
-  // exatamente o mesmo secret, por definição — duas variáveis pro mesmo
-  // valor só criaria risco de ficarem dessincronizadas. Ver
-  // docs/PITCHAT_META_INTEGRATION.md §3.
-  const webhookSigningSecret = process.env.INSTAGRAM_APP_SECRET;
+  // Ver lib/meta/webhook-secret.ts::getWebhookSigningSecret pro achado real
+  // (24/09/2026) de por que é INSTAGRAM_APP_SECRET, nunca META_APP_SECRET.
+  const webhookSigningSecret = getWebhookSigningSecret();
   const admin = getSupabaseAdminClient();
 
   if (!admin) {
