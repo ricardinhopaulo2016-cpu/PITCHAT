@@ -94,6 +94,19 @@ Fontes: https://developers.facebook.com/docs/instagram-platform/reference/access
 
 Todas as trocas usam `client_secret` → **server-side only**, nunca em código client-side. Já implementado assim em `lib/meta/oauth.ts`.
 
+### ⚠️ Achado real (23-24/09/2026) — dois IDs diferentes pro mesmo usuário, um deles quebra o webhook silenciosamente
+
+O passo 2 (troca de code) devolve um campo chamado `user_id` — **esse nome é enganoso**. Confirmado ao vivo comparando contra `entry.id` de webhooks reais da conta `@papagaio_milhas`:
+
+- `user_id` da troca de code (passo 2) = **app-scoped ID**, muda por app. Nunca aparece em nenhum webhook.
+- `GET https://graph.instagram.com/{version}/me?fields=user_id,username` devolve **dois campos**: `id` (o mesmo app-scoped acima) e `user_id` — esse segundo é o **Instagram Business Account ID real**, e é **esse** que sempre chega como `entry.id` em todo webhook (`comments`/`messages`/`messaging_postbacks`).
+
+Gravar o ID errado (app-scoped) em `social_accounts.external_account_id` não gera nenhum erro em lugar nenhum — o `POST /me/subscribed_apps` funciona normalmente (aceita o app-scoped como alias de "me" pro dono do token), o OAuth "conecta" com sucesso, e só na hora de casar um webhook real com a conta (`app/api/jobs/process-webhook-event/route.ts`) o lookup falha silenciosamente: o evento é marcado `processed` sem erro, mas nenhuma automação dispara. **Silêncio total**, mesma classe de gap já documentada acima pra `subscribeAccountToWebhooks`.
+
+Corrigido em `lib/meta/oauth.ts::fetchInstagramIdentity` (chama `GET /me?fields=user_id,username` depois do exchange, grava o `user_id` real) — nunca mais usar `ShortLivedTokenResult.userId` como `external_account_id`.
+
+Fonte: comportamento real da Graph API, reproduzido e confirmado nesta sessão (sem página oficial que documente essa distinção `id` vs `user_id` de forma explícita — reportar se encontrar uma).
+
 ## 3. Webhooks
 
 - **Verificação inicial**: `GET` no endpoint configurado, com `hub.mode=subscribe`, `hub.challenge` (ecoar de volta) e `hub.verify_token` (comparar com `META_WEBHOOK_VERIFY_TOKEN`). Já implementado em `app/api/webhooks/meta/route.ts` (`GET`).

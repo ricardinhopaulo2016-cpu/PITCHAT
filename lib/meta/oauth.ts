@@ -152,22 +152,40 @@ export async function refreshLongLivedToken(currentToken: string): Promise<LongL
   };
 }
 
-export async function fetchInstagramProfile(
-  accessToken: string,
-  userId: string
-): Promise<{ username: string | null }> {
-  // Lookup de nó da Graph API — ao contrário dos endpoints de token acima
-  // (esses não levam versão, confirmado na doc oficial), este segue o padrão
-  // versionado normal (mesmo formato usado pra IG-Comment, ver
-  // docs/PITCHAT_META_INTEGRATION.md §3).
-  const url = new URL(`https://graph.instagram.com/${getGraphApiVersion()}/${userId}`);
-  url.searchParams.set("fields", "username");
+export type InstagramIdentity = { igUserId: string; username: string | null };
+
+/**
+ * Resolve a identidade REAL da conta a partir do token — nunca confiar no
+ * `user_id` devolvido pela troca de code (`ShortLivedTokenResult.userId`).
+ *
+ * Achado real, confirmado ao vivo em 23-24/09/2026 comparando contra webhooks
+ * de verdade da conta @papagaio_milhas: `GET /me` devolve DOIS ids diferentes
+ * pro mesmo usuário —
+ *   `id`      = app-scoped (muda por app; é o que a troca de code chama de
+ *               "user_id", nome enganoso da própria Meta)
+ *   `user_id` = Instagram Business Account ID real — é ESSE que chega como
+ *               `entry.id` em todo webhook (comments/messages/postbacks).
+ * Gravar o `id` app-scoped em `social_accounts.external_account_id` (bug
+ * anterior) deixa a automação inteira silenciosamente inerte: o lookup em
+ * app/api/jobs/process-webhook-event/route.ts (`eq("external_account_id",
+ * event.externalAccountId)`) nunca acha a conta — sem erro nenhum, o
+ * webhook_event some processado como se nada tivesse casado (mesma classe de
+ * "silêncio total" já documentada em subscribeAccountToWebhooks acima).
+ * Fonte: resposta real da Graph API, não documentada com essa distinção
+ * explícita em docs/PITCHAT_META_INTEGRATION.md — atualizar lá também.
+ */
+export async function fetchInstagramIdentity(accessToken: string): Promise<InstagramIdentity> {
+  const url = new URL(`https://graph.instagram.com/${getGraphApiVersion()}/me`);
+  url.searchParams.set("fields", "user_id,username");
   url.searchParams.set("access_token", accessToken);
 
   const res = await fetch(url.toString());
-  if (!res.ok) return { username: null };
+  if (!res.ok) throw new Error(`Falha ao buscar identidade real da conta: HTTP ${res.status}`);
+
   const json = await res.json();
-  return { username: json.username ?? null };
+  if (!json.user_id) throw new Error("GET /me não devolveu user_id — resposta inesperada da Graph API");
+
+  return { igUserId: String(json.user_id), username: json.username ?? null };
 }
 
 // Fields mínimos pro MVP (docs/PITCHAT_META_INTEGRATION.md §3) — mesmos já

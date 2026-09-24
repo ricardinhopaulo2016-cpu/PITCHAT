@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildAuthorizationUrl,
   buildOAuthState,
+  fetchInstagramIdentity,
   needsRefresh,
   normalizePermissions,
   subscribeAccountToWebhooks,
@@ -137,6 +138,55 @@ describe("subscribeAccountToWebhooks", () => {
   it("retorna false (nunca lança) quando a API responde com erro", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false }));
     expect(await subscribeAccountToWebhooks("token-abc", "17841400000000000")).toBe(false);
+  });
+});
+
+describe("fetchInstagramIdentity", () => {
+  // Regressão do bug real confirmado ao vivo em 23-24/09/2026: gravar o `id`
+  // app-scoped (o que a troca de code chama, enganosamente, de "user_id") em
+  // social_accounts.external_account_id deixa TODA automação silenciosamente
+  // inerte, porque `entry.id` nos webhooks reais sempre usa o `user_id` real
+  // devolvido por `GET /me` — nunca o app-scoped. Ver comentário completo em
+  // lib/meta/oauth.ts::fetchInstagramIdentity.
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("retorna o user_id REAL de /me, nunca o id app-scoped, mesmo quando os dois vêm juntos na resposta", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        id: "29455214934066270", // app-scoped — NUNCA deve ser o retorno
+        user_id: "17841478069344828", // real — é o que aparece em entry.id dos webhooks
+        username: "papagaio_milhas",
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const identity = await fetchInstagramIdentity("token-abc");
+
+    expect(identity.igUserId).toBe("17841478069344828");
+    expect(identity.igUserId).not.toBe("29455214934066270");
+    expect(identity.username).toBe("papagaio_milhas");
+
+    const [urlArg] = fetchMock.mock.calls[0];
+    const url = new URL(urlArg);
+    expect(url.pathname.endsWith("/me")).toBe(true);
+    expect(url.searchParams.get("fields")).toBe("user_id,username");
+    expect(url.searchParams.get("access_token")).toBe("token-abc");
+  });
+
+  it("lança erro (nunca retorna id vazio/undefined) se a resposta não trouxer user_id", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true, json: async () => ({ username: "sem_user_id" }) })
+    );
+    await expect(fetchInstagramIdentity("token-abc")).rejects.toThrow(/user_id/);
+  });
+
+  it("lança erro se a Graph API responder com HTTP não-ok", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 401 }));
+    await expect(fetchInstagramIdentity("token-abc")).rejects.toThrow(/401/);
   });
 });
 

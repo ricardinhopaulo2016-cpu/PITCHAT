@@ -3,7 +3,7 @@ import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
   exchangeCodeForShortLivedToken,
   exchangeForLongLivedToken,
-  fetchInstagramProfile,
+  fetchInstagramIdentity,
   getMetaOAuthConfig,
   subscribeAccountToWebhooks,
   verifyOAuthState,
@@ -49,22 +49,30 @@ export async function GET(request: Request) {
   try {
     const shortLived = await exchangeCodeForShortLivedToken(config, code);
     const longLived = await exchangeForLongLivedToken(config, shortLived.accessToken);
-    const profile = await fetchInstagramProfile(longLived.accessToken, shortLived.userId);
+
+    // NUNCA usar shortLived.userId como identidade da conta — é um ID
+    // app-scoped, diferente do `entry.id` que chega nos webhooks reais (ver
+    // comentário completo em lib/meta/oauth.ts::fetchInstagramIdentity).
+    // `fetchInstagramIdentity` resolve o ID real (`user_id` de `GET /me`),
+    // o mesmo que a Meta usa em todo webhook — é esse que precisa ir pra
+    // `external_account_id`, senão o lookup em process-webhook-event nunca
+    // casa e a automação fica inerte sem nenhum erro visível.
+    const identity = await fetchInstagramIdentity(longLived.accessToken);
 
     // Assinar o app a nível de App Dashboard NÃO é suficiente — cada conta
     // precisa individualmente "optar" por mandar eventos pro nosso app (ver
     // comentário em lib/meta/oauth.ts::subscribeAccountToWebhooks). Achado
     // real no primeiro teste E2E: sem isso, webhook_events nunca recebe nada
     // pra essa conta, sem nenhum erro visível em lugar nenhum.
-    const webhookSubscribed = await subscribeAccountToWebhooks(longLived.accessToken, shortLived.userId);
+    const webhookSubscribed = await subscribeAccountToWebhooks(longLived.accessToken, identity.igUserId);
 
     const { error: upsertError } = await admin.from("social_accounts").upsert(
       {
         workspace_id: parsedState.workspaceId,
         profile_id: parsedState.profileId,
         platform: "instagram",
-        external_account_id: shortLived.userId,
-        username: profile.username,
+        external_account_id: identity.igUserId,
+        username: identity.username,
         access_token_encrypted: encryptToken(longLived.accessToken),
         token_expires_at: longLived.expiresAt.toISOString(),
         permissions: shortLived.permissions,
