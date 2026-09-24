@@ -38,19 +38,32 @@ export class MetaApiError extends Error {
 
 export type SendMessageResult = { externalMessageId: string | null };
 
+/**
+ * Botão do Button Template (docs/PITCHAT_META_INTEGRATION.md §5, confirmado
+ * na doc oficial em 24/09/2026): até 3 por mensagem, `web_url` abre link,
+ * `postback` dispara `messaging_postbacks` com o `payload` definido por nós
+ * (nunca o título — mesma regra do quick reply).
+ */
+export type ButtonTemplateButton =
+  | { type: "web_url"; title: string; url: string }
+  | { type: "postback"; title: string; payload: string };
+
 export interface MetaClient {
   /** Resposta pública a um comentário. POST /{comment-id}/replies */
   sendPublicReply(params: { accessToken: string; commentId: string; text: string }): Promise<void>;
 
   /**
    * Private reply — só funciona 1x por comentário, dentro de 7 dias.
-   * POST /{ig-user-id}/messages, recipient.comment_id.
+   * POST /{ig-user-id}/messages, recipient.comment_id. `quickReplies`
+   * (opcional) tenta anexar os botões NA MESMA mensagem — ver achado real
+   * 24/09/2026 em lib/automation/engine.ts sobre por que isso existe.
    */
   sendPrivateReply(params: {
     accessToken: string;
     igUserId: string;
     commentId: string;
     text: string;
+    quickReplies?: { title: string; payload: string }[];
   }): Promise<SendMessageResult>;
 
   /** Mensagem de texto simples. POST /{ig-user-id}/messages, recipient.id (IGSID). */
@@ -68,6 +81,15 @@ export interface MetaClient {
     recipientId: string;
     text: string;
     options: { title: string; payload: string }[];
+  }): Promise<SendMessageResult>;
+
+  /** Button Template — texto até 640 chars + até 3 botões (web_url/postback). */
+  sendButtonTemplate(params: {
+    accessToken: string;
+    igUserId: string;
+    recipientId: string;
+    text: string;
+    buttons: ButtonTemplateButton[];
   }): Promise<SendMessageResult>;
 }
 
@@ -125,10 +147,24 @@ export const realMetaClient: MetaClient = {
     await callGraphApi(`/${commentId}/replies`, accessToken, { message: text });
   },
 
-  async sendPrivateReply({ accessToken, igUserId, commentId, text }) {
+  async sendPrivateReply({ accessToken, igUserId, commentId, text, quickReplies }) {
+    const message: Record<string, unknown> = { text };
+    // A doc oficial de Private Reply só mostra exemplo com `text` — nunca
+    // confirmado nem negado explicitamente que `quick_replies` funciona
+    // junto (ver achado real 24/09/2026, comentário em
+    // lib/automation/engine.ts). Anexa quando pedido; se a Meta rejeitar,
+    // o erro real fica capturado em automation_run_steps.error — decide-se
+    // a partir daí, nunca de suposição.
+    if (quickReplies && quickReplies.length > 0) {
+      message.quick_replies = quickReplies.map((q) => ({
+        content_type: "text",
+        title: q.title,
+        payload: q.payload,
+      }));
+    }
     const result = await callGraphApi(`/${igUserId}/messages`, accessToken, {
       recipient: { comment_id: commentId },
-      message: { text },
+      message,
     });
     return { externalMessageId: (result.message_id as string) ?? null };
   },
@@ -151,6 +187,27 @@ export const realMetaClient: MetaClient = {
           title: o.title,
           payload: o.payload,
         })),
+      },
+    });
+    return { externalMessageId: (result.message_id as string) ?? null };
+  },
+
+  async sendButtonTemplate({ accessToken, igUserId, recipientId, text, buttons }) {
+    const result = await callGraphApi(`/${igUserId}/messages`, accessToken, {
+      recipient: { id: recipientId },
+      message: {
+        attachment: {
+          type: "template",
+          payload: {
+            template_type: "button",
+            text,
+            buttons: buttons.map((b) =>
+              b.type === "web_url"
+                ? { type: "web_url", title: b.title, url: b.url }
+                : { type: "postback", title: b.title, payload: b.payload }
+            ),
+          },
+        },
       },
     });
     return { externalMessageId: (result.message_id as string) ?? null };

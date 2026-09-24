@@ -9,9 +9,12 @@ Existe código e testes (com mocks) para os quatro fluxos abaixo, mas **nenhum r
 | Componente | Código | Status |
 |---|---|---|
 | OAuth (`lib/meta/oauth.ts`, `app/api/auth/meta/*`) | Completo | **`E2E VERIFIED (10/09/2026)`** — conta `papagaio_milhas` conectada de verdade, token real, permissions reais |
-| Webhook — recebimento/assinatura/persistência (`app/api/webhooks/meta/route.ts`) | Completo | `IMPLEMENTED / NOT E2E VERIFIED` — testado só com payload sintético assinado; **bloqueado pra tráfego real** (ver §1.8 — precisa Live + Advanced Access + Business Verification, nunca entregue em Development mode) |
-| Private Reply (`lib/meta/client.ts::sendPrivateReply`) | Completo | `IMPLEMENTED / NOT E2E VERIFIED` — bloqueado até o webhook disparar um run de verdade (não há como testar isoladamente sem um comentário real chegando) |
-| Send API — texto/quick reply (`lib/meta/client.ts::sendTextMessage/sendQuickReplies`) | Completo | `IMPLEMENTED / NOT E2E VERIFIED` |
+| Webhook — recebimento/assinatura/persistência (`app/api/webhooks/meta/route.ts`) | Completo | **`E2E VERIFIED (24/09/2026)`** — tráfego real da Meta, assinatura validando com `INSTAGRAM_APP_SECRET` (ver §3), App em Live |
+| Public Reply (`lib/meta/client.ts::sendPublicReply`) | Completo | **`E2E VERIFIED (24/09/2026)`** — comentário público real postado no Instagram |
+| Private Reply (`lib/meta/client.ts::sendPrivateReply`) | Completo | **`E2E VERIFIED (24/09/2026)`** — DM real confirmada por read receipt do destinatário. Variante com `quickReplies` anexado: `NOT E2E VERIFIED` ainda (ver §4) |
+| Send API — quick reply (`lib/meta/client.ts::sendQuickReplies`) | Completo | **`E2E VERIFIED (24/09/2026)`** — clique real retomou a `automation_run` correta via `messaging_postbacks` |
+| Send API — Button Template (`lib/meta/client.ts::sendButtonTemplate`) | Completo | `IMPLEMENTED / NOT E2E VERIFIED` — formato confirmado na doc oficial, ainda sem chamada real (próximo teste) |
+| DELAY (`lib/automation/engine.ts`, `app/api/jobs/resume-automation-run/route.ts`) | Completo | `IMPLEMENTED / NOT E2E VERIFIED` (real desde 09/09/2026 contra infra, nunca com um `automation_run` de comentário real ponta a ponta) |
 
 Atualizar esta tabela pra `E2E VERIFIED (dd/mm/aaaa)` só depois de uma chamada real bem-sucedida, com o `messageId`/status HTTP retornado pela Meta anexado ao relatório de fase.
 
@@ -189,8 +192,9 @@ Fonte: https://developers.facebook.com/docs/instagram-platform/instagram-graph-a
 Regras confirmadas na doc oficial:
 - Janela de **7 dias** após o comentário (posts/reels/story replies). Em **Instagram Live**, só durante a transmissão.
 - **Uma única private reply por comentário, para sempre** — segunda tentativa deve falhar de forma explícita no nosso sistema (`error.code = "META_PRIVATE_REPLY_ALREADY_SENT"`), nunca silenciar. Já modelado assim na arquitetura.
-- Depois da private reply, continuar mandando mensagens só é possível se o usuário responder (aí vale a janela de 24h padrão do Send API).
+- Depois da private reply, continuar mandando mensagens só é possível se o usuário responder (aí vale a janela de 24h padrão do Send API). ⚠️ **Contradito na prática (24/09/2026)**: um `QUICK_REPLY` (`recipient.id`) mandado logo em seguida à private reply, **sem o usuário ter respondido nada**, funcionou de verdade em produção (confirmado por read receipt real do destinatário). Hipótese não confirmada oficialmente: o próprio comentário já conta como "entry point" que abre a janela padrão, independente da regra específica de "follow-up da private reply" citada acima. Tratar a regra oficial como conservadora demais — válido testar, nunca simplesmente assumir bloqueio sem tentar contra a API real.
 - Rate limit: **750 chamadas/hora** por conta profissional (post/reel); **100/s** em Live.
+- **`quick_replies` dentro do próprio body de Private Reply**: **não documentado nem confirmado nem negado** explicitamente pela doc oficial (o exemplo mostra só `{text}`). `lib/meta/client.ts::sendPrivateReply` aceita um `quickReplies` opcional e tenta enviar assim — usado pra evitar duas bubbles (private reply + quick reply) com texto duplicado. Resultado real (aceito ou rejeitado pela Meta) fica em `automation_run_steps.error`/`.output` no primeiro teste real — atualizar esta linha depois.
 
 Fonte: https://developers.facebook.com/docs/instagram-platform/private-replies/
 

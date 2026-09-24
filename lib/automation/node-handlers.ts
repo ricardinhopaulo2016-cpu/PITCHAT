@@ -18,8 +18,14 @@ export type ExecutionContext = {
 export type NodeOutcome =
   | { kind: "no_match" } // KEYWORD_MATCH não bateu — run termina sem disparar nada
   | { kind: "public_reply"; text: string }
-  | { kind: "private_reply"; text: string }
-  | { kind: "send_message"; text: string }
+  // `quickReplyOptions` (opcional): anexa botões NA MESMA private reply em
+  // vez de mandar um QUICK_REPLY separado depois — ver achado real
+  // 24/09/2026 em lib/automation/engine.ts (por que existe e o que fazer
+  // se a Meta rejeitar). Ausente/vazio = comportamento antigo, inalterado.
+  | { kind: "private_reply"; text: string; quickReplyOptions?: { key: string; title: string }[] }
+  // `button` (opcional): manda Button Template (texto + botão web_url) em
+  // vez de texto simples — usado pra não expor URL crua na mensagem.
+  | { kind: "send_message"; text: string; button?: { title: string; url: string } }
   | { kind: "quick_reply"; text: string; options: { key: string; title: string }[] }
   | { kind: "delay"; minutes: number }
   | { kind: "branch"; label: string }
@@ -65,14 +71,28 @@ export function evaluateNode(
       return { kind: "public_reply", text: pickVariant(variants, rng) };
     }
 
-    case "PRIVATE_REPLY":
-      return { kind: "private_reply", text: String(node.data.text ?? "") };
+    case "PRIVATE_REPLY": {
+      const quickReplyOptions = Array.isArray(node.data.quickReplyOptions)
+        ? (node.data.quickReplyOptions as { key: string; title: string }[])
+        : undefined;
+      return {
+        kind: "private_reply",
+        text: String(node.data.text ?? ""),
+        ...(quickReplyOptions && quickReplyOptions.length > 0 ? { quickReplyOptions } : {}),
+      };
+    }
 
     case "SEND_MESSAGE": {
       // link_id (seção 33 do briefing) resolvido pelo orquestrador antes de
       // chegar aqui não é responsabilidade do node puro — ele só repassa o
-      // texto já resolvido em node.data.text.
-      return { kind: "send_message", text: String(node.data.text ?? "") };
+      // texto já resolvido em node.data.text. `button` (opcional): manda
+      // Button Template em vez de texto simples.
+      const button = node.data.button as { title: string; url: string } | undefined;
+      return {
+        kind: "send_message",
+        text: String(node.data.text ?? ""),
+        ...(button ? { button } : {}),
+      };
     }
 
     case "QUICK_REPLY": {

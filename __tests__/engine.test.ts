@@ -24,6 +24,7 @@ function fakeMeta(overrides: Partial<MetaClient> = {}): MetaClient {
     sendPrivateReply: vi.fn().mockResolvedValue({ externalMessageId: "m1" }),
     sendTextMessage: vi.fn().mockResolvedValue({ externalMessageId: "m2" }),
     sendQuickReplies: vi.fn().mockResolvedValue({ externalMessageId: "m3" }),
+    sendButtonTemplate: vi.fn().mockResolvedValue({ externalMessageId: "m4" }),
     ...overrides,
   };
 }
@@ -171,6 +172,116 @@ describe("advanceRun", () => {
     expect(run.status).toBe("waiting");
     expect(run.waiting_reason).toBe("quick_reply");
     expect(run.cursor_node_id).toBe("qr");
+  });
+
+  it("PRIVATE_REPLY com quickReplyOptions anexa os botões NA MESMA mensagem e pausa o run, igual QUICK_REPLY", async () => {
+    // Achado real 24/09/2026: duas mensagens separadas (PRIVATE_REPLY + QUICK_REPLY)
+    // com o mesmo texto apareciam como bubbles duplicadas no Instagram — o fix é
+    // anexar os botões na própria PRIVATE_REPLY. Ver comentário em lib/automation/engine.ts.
+    const graph: Graph = {
+      nodes: [
+        { id: "trigger", type: "TRIGGER_COMMENT", data: {} },
+        {
+          id: "priv",
+          type: "PRIVATE_REPLY",
+          data: {
+            text: "Quer receber o vídeo?",
+            quickReplyOptions: [{ key: "video", title: "Me manda o vídeo" }],
+          },
+        },
+        { id: "send", type: "SEND_MESSAGE", data: { text: "nunca deveria chegar aqui neste teste" } },
+      ],
+      edges: [
+        { from: "trigger", to: "priv" },
+        { from: "priv", to: "send" },
+      ],
+    };
+    const fake = createFakeSupabase();
+    seedRun(fake);
+    const meta = fakeMeta();
+
+    await advanceRun(fake as never, meta, {
+      run: fake.__tables.automation_runs[0] as never,
+      graph,
+      socialAccount,
+      recipientId: "user-igsid-1",
+      commentId: "comment-1",
+      ctx: baseCtx(),
+    });
+
+    expect(meta.sendPrivateReply).toHaveBeenCalledWith({
+      accessToken: "token-1",
+      igUserId: "ig-account-1",
+      commentId: "comment-1",
+      text: "Quer receber o vídeo?",
+      quickReplies: [{ title: "Me manda o vídeo", payload: "run1:priv:video" }],
+    });
+    expect(meta.sendTextMessage).not.toHaveBeenCalled(); // pausou, não deveria ter avançado pro SEND_MESSAGE
+    const run = fake.__tables.automation_runs[0];
+    expect(run.status).toBe("waiting");
+    expect(run.waiting_reason).toBe("quick_reply");
+    expect(run.cursor_node_id).toBe("priv");
+  });
+
+  it("PRIVATE_REPLY sem quickReplyOptions continua sem pausar (comportamento antigo, inalterado)", async () => {
+    const fake = createFakeSupabase();
+    seedRun(fake);
+    const meta = fakeMeta();
+
+    await advanceRun(fake as never, meta, {
+      run: fake.__tables.automation_runs[0] as never,
+      graph: linearGraph,
+      socialAccount,
+      recipientId: "user-igsid-1",
+      commentId: "comment-1",
+      ctx: baseCtx(),
+    });
+
+    expect(meta.sendPrivateReply).toHaveBeenCalledWith({
+      accessToken: "token-1",
+      igUserId: "ig-account-1",
+      commentId: "comment-1",
+      text: "Oi! Aqui está o link.",
+    });
+    expect(fake.__tables.automation_runs[0].status).toBe("completed"); // não pausou
+  });
+
+  it("SEND_MESSAGE com button manda Button Template em vez de texto simples", async () => {
+    const graph: Graph = {
+      nodes: [
+        { id: "trigger", type: "TRIGGER_COMMENT", data: {} },
+        {
+          id: "send",
+          type: "SEND_MESSAGE",
+          data: {
+            text: "Tá na mão!",
+            button: { title: "Assistir ao vídeo", url: "https://exemplo.com/video" },
+          },
+        },
+      ],
+      edges: [{ from: "trigger", to: "send" }],
+    };
+    const fake = createFakeSupabase();
+    seedRun(fake);
+    const meta = fakeMeta();
+
+    await advanceRun(fake as never, meta, {
+      run: fake.__tables.automation_runs[0] as never,
+      graph,
+      socialAccount,
+      recipientId: "user-igsid-1",
+      commentId: null,
+      ctx: baseCtx(),
+    });
+
+    expect(meta.sendButtonTemplate).toHaveBeenCalledWith({
+      accessToken: "token-1",
+      igUserId: "ig-account-1",
+      recipientId: "user-igsid-1",
+      text: "Tá na mão!",
+      buttons: [{ type: "web_url", title: "Assistir ao vídeo", url: "https://exemplo.com/video" }],
+    });
+    expect(meta.sendTextMessage).not.toHaveBeenCalled(); // URL nunca crua no texto
   });
 
   it("DELAY sem QStash configurado falha explicitamente (nunca finge que agendou)", async () => {

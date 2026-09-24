@@ -157,23 +157,50 @@ export async function advanceRun(
 
         case "private_reply": {
           if (!commentId) throw new Error("PRIVATE_REPLY sem commentId no contexto do run");
+          const hasQuickReply = !!outcome.quickReplyOptions?.length;
+          const quickReplies = outcome.quickReplyOptions?.map((o) => ({
+            title: o.title,
+            payload: buildQuickReplyPayload(run.id, currentNode!.id, o.key),
+          }));
           const result = await meta.sendPrivateReply({
             accessToken: socialAccount.accessToken,
             igUserId: socialAccount.externalAccountId,
             commentId,
             text: outcome.text,
+            ...(quickReplies ? { quickReplies } : {}),
           });
           await logStep(admin, run.id, currentNode.id, currentNode.type, "succeeded", null, result as never);
+          if (hasQuickReply) {
+            // Mesma pausa do node QUICK_REPLY (ver caso abaixo) — o botão
+            // veio junto NESTA mensagem em vez de numa próxima separada, mas
+            // o mecanismo de retomada é idêntico: o payload do botão já
+            // aponta pra este node id, então `nextAfter` funciona igual.
+            await updateRun(admin, run.id, {
+              status: "waiting",
+              waiting_reason: "quick_reply",
+              cursor_node_id: currentNode.id,
+              context: ctx.variables,
+            });
+            return;
+          }
           break;
         }
 
         case "send_message": {
-          const result = await meta.sendTextMessage({
-            accessToken: socialAccount.accessToken,
-            igUserId: socialAccount.externalAccountId,
-            recipientId,
-            text: outcome.text,
-          });
+          const result = outcome.button
+            ? await meta.sendButtonTemplate({
+                accessToken: socialAccount.accessToken,
+                igUserId: socialAccount.externalAccountId,
+                recipientId,
+                text: outcome.text,
+                buttons: [{ type: "web_url", title: outcome.button.title, url: outcome.button.url }],
+              })
+            : await meta.sendTextMessage({
+                accessToken: socialAccount.accessToken,
+                igUserId: socialAccount.externalAccountId,
+                recipientId,
+                text: outcome.text,
+              });
           await logStep(admin, run.id, currentNode.id, currentNode.type, "succeeded", null, result as never);
           break;
         }

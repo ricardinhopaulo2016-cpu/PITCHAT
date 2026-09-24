@@ -34,9 +34,46 @@ describe("evaluateNode", () => {
     expect(evaluateNode(n, baseCtx, () => 0.5)).toEqual({ kind: "public_reply", text: "B" });
   });
 
-  it("PRIVATE_REPLY: repassa o texto configurado", () => {
+  it("PRIVATE_REPLY: repassa o texto configurado, sem quickReplyOptions quando não tem no data", () => {
     const n = node("PRIVATE_REPLY", { text: "Olha sua DM!" });
     expect(evaluateNode(n, baseCtx)).toEqual({ kind: "private_reply", text: "Olha sua DM!" });
+  });
+
+  // Achado real 24/09/2026: PRIVATE_REPLY + QUICK_REPLY separados com o
+  // mesmo texto apareciam como bubbles duplicadas — fix é anexar os botões
+  // NA MESMA private reply (ver lib/automation/engine.ts).
+  it("PRIVATE_REPLY: repassa quickReplyOptions quando presente no data", () => {
+    const n = node("PRIVATE_REPLY", {
+      text: "Quer receber o vídeo?",
+      quickReplyOptions: [{ key: "video", title: "Me manda o vídeo" }],
+    });
+    expect(evaluateNode(n, baseCtx)).toEqual({
+      kind: "private_reply",
+      text: "Quer receber o vídeo?",
+      quickReplyOptions: [{ key: "video", title: "Me manda o vídeo" }],
+    });
+  });
+
+  it("PRIVATE_REPLY: quickReplyOptions vazio é tratado igual a ausente (nunca pausa à toa)", () => {
+    const n = node("PRIVATE_REPLY", { text: "Oi!", quickReplyOptions: [] });
+    expect(evaluateNode(n, baseCtx)).toEqual({ kind: "private_reply", text: "Oi!" });
+  });
+
+  it("SEND_MESSAGE: repassa só o texto quando não tem button", () => {
+    const n = node("SEND_MESSAGE", { text: "Aqui está!" });
+    expect(evaluateNode(n, baseCtx)).toEqual({ kind: "send_message", text: "Aqui está!" });
+  });
+
+  it("SEND_MESSAGE: repassa o button quando presente — nunca expõe URL crua no texto", () => {
+    const n = node("SEND_MESSAGE", {
+      text: "Tá na mão!",
+      button: { title: "Assistir ao vídeo", url: "https://exemplo.com/v" },
+    });
+    expect(evaluateNode(n, baseCtx)).toEqual({
+      kind: "send_message",
+      text: "Tá na mão!",
+      button: { title: "Assistir ao vídeo", url: "https://exemplo.com/v" },
+    });
   });
 
   it("QUICK_REPLY: repassa texto e opções", () => {
