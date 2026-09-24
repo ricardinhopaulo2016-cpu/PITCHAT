@@ -1,9 +1,12 @@
 import Link from "next/link";
+import { ChevronLeft } from "lucide-react";
 import { redirect } from "next/navigation";
 import { getAuthContext } from "@/lib/auth/session";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { formatBytes, formatDurationMs, formatResolution } from "@/lib/media/format";
 import { mediaStatusLabel } from "@/lib/media/status-label";
+import { PageHeader } from "@/components/app-shell/page-header";
+import { EmptyState } from "@/components/ui/empty-state";
 import { MediaUploadForm } from "./upload-form";
 import { AutoRefreshWhilePending } from "./auto-refresh";
 
@@ -60,75 +63,78 @@ export default async function MediaLibraryPage() {
   );
 
   return (
-    <main className="mx-auto max-w-4xl px-6 py-12">
+    <>
       <AutoRefreshWhilePending active={hasPending} />
 
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Media Library</h1>
-        <Link href="/dashboard" className="text-sm underline opacity-70">
-          Voltar
+      <PageHeader
+        title="Media Library"
+        description="Arquivos usados nas automações — identidade por SHA-256, nunca por nome de arquivo."
+      />
+
+      <div className="mx-auto max-w-4xl px-6 pb-10 md:px-8">
+        <Link href="/dashboard" className="mb-5 inline-flex items-center gap-1 text-sm text-text-secondary hover:text-text">
+          <ChevronLeft className="h-3.5 w-3.5" /> Dashboard
         </Link>
-      </div>
 
-      <div className="mb-8">
-        <MediaUploadForm />
-      </div>
-
-      {error && (
-        <p className="text-sm text-red-600">
-          Não foi possível carregar a biblioteca agora. Tente de novo em instantes.
-        </p>
-      )}
-
-      {!error && (!assets || assets.length === 0) && (
-        <div className="rounded border border-dashed p-8 text-center">
-          <p className="font-medium">Nenhuma mídia na biblioteca ainda.</p>
-          <p className="text-sm opacity-60">Envie seu primeiro vídeo para começar.</p>
+        <div className="mb-8">
+          <MediaUploadForm />
         </div>
-      )}
 
-      {assets && assets.length > 0 && (
-        <ul className="divide-y">
-          {assets.map((asset) => (
-            <li key={asset.id} className="flex items-center gap-4 py-3">
-              <Thumbnail mimeType={asset.mime_type} url={thumbnails.get(asset.id)} />
+        {error && (
+          <p className="text-sm text-danger">
+            Não foi possível carregar a biblioteca agora. Tente de novo em instantes.
+          </p>
+        )}
 
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-medium">
-                  {asset.original_filename ?? "(sem nome)"}
-                </p>
-                <p className="text-sm opacity-60">
-                  <StatusBadge status={asset.status} /> ·{" "}
-                  {formatDurationMs(asset.duration_ms)} ·{" "}
-                  {formatResolution(asset.width, asset.height)} ·{" "}
-                  {formatBytes(asset.file_size)} ·{" "}
-                  {new Date(asset.created_at).toLocaleDateString("pt-BR")}
-                </p>
-              </div>
+        {!error && (!assets || assets.length === 0) && (
+          <EmptyState title="Nenhuma mídia na biblioteca ainda" description="Envie seu primeiro vídeo para começar." />
+        )}
 
-              <Link
-                href={`/dashboard/media/${asset.id}`}
-                className="shrink-0 rounded border px-3 py-1.5 text-sm hover:bg-gray-50"
-              >
-                Abrir
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
-    </main>
+        {assets && assets.length > 0 && (
+          <div className="overflow-hidden rounded-[var(--radius-panel-lg)] border border-border-subtle">
+            <ul className="divide-y divide-border-subtle bg-surface-1">
+              {assets.map((asset) => (
+                <li key={asset.id} className="flex items-center gap-4 px-5 py-3.5">
+                  <Thumbnail mimeType={asset.mime_type} url={thumbnails.get(asset.id)} />
+
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-text">
+                      {asset.original_filename ?? "(sem nome)"}
+                    </p>
+                    <p className="text-xs text-text-muted">
+                      <StatusBadge status={asset.status} /> ·{" "}
+                      {formatDurationMs(asset.duration_ms)} ·{" "}
+                      {formatResolution(asset.width, asset.height)} ·{" "}
+                      {formatBytes(asset.file_size)} ·{" "}
+                      {new Date(asset.created_at).toLocaleDateString("pt-BR")}
+                    </p>
+                  </div>
+
+                  <Link
+                    href={`/dashboard/media/${asset.id}`}
+                    className="shrink-0 rounded-[var(--radius-button)] border border-border-subtle px-3 py-1.5 text-sm text-text-secondary hover:bg-surface-2 hover:text-text"
+                  >
+                    Abrir
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </>
   );
 }
 
 function Thumbnail({ mimeType, url }: { mimeType: string | null; url?: string }) {
   if (url) {
     // eslint-disable-next-line @next/next/no-img-element -- signed URL expira, next/image cacheia por tempo demais pra isso
-    return <img src={url} alt="" className="h-12 w-12 shrink-0 rounded object-cover" />;
+    return <img src={url} alt="" className="h-12 w-12 shrink-0 rounded-[var(--radius-panel-sm)] object-cover" />;
   }
 
   const isVideo = mimeType?.startsWith("video/");
   return (
-    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded bg-gray-100 text-gray-400">
+    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[var(--radius-panel-sm)] bg-surface-2 text-text-muted">
       {isVideo ? (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
           <path d="M8 5v14l11-7z" />
@@ -156,9 +162,9 @@ function StatusBadge({ status }: { status: string }) {
   const label = mediaStatusLabel(status);
   const tone =
     status === "failed"
-      ? "text-red-600"
+      ? "text-danger"
       : status === "pending" || status === "processing"
-        ? "text-amber-600"
-        : "text-green-700";
+        ? "text-warning"
+        : "text-success";
   return <span className={tone}>{label}</span>;
 }

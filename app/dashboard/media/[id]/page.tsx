@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ChevronLeft } from "lucide-react";
 import { notFound, redirect } from "next/navigation";
 import { getAuthContext } from "@/lib/auth/session";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -60,20 +61,21 @@ export default async function MediaAssetDetailPage({
 
   if (!asset) notFound();
 
-  const { data: usage } = await admin
-    .from("media_usage")
-    .select("id, platform, context, used_at, profile:profiles(name)")
-    .eq("media_asset_id", asset.id)
-    .order("used_at", { ascending: false })
-    .returns<MediaUsageRow[]>();
-
-  let previewUrl: string | null = null;
-  if (asset.status === "ready") {
-    const { data: signed } = await admin.storage
-      .from("media")
-      .createSignedUrl(asset.storage_key, PREVIEW_TTL_SECONDS);
-    previewUrl = signed?.signedUrl ?? null;
-  }
+  // `usage` (depende só de asset.id) e `signed` (depende só de
+  // asset.storage_key/asset.status) não dependem uma da outra — só de
+  // `asset`, já resolvido acima. Paraleliza (reauditoria HEAD 24/09/2026).
+  const [{ data: usage }, signed] = await Promise.all([
+    admin
+      .from("media_usage")
+      .select("id, platform, context, used_at, profile:profiles(name)")
+      .eq("media_asset_id", asset.id)
+      .order("used_at", { ascending: false })
+      .returns<MediaUsageRow[]>(),
+    asset.status === "ready"
+      ? admin.storage.from("media").createSignedUrl(asset.storage_key, PREVIEW_TTL_SECONDS)
+      : Promise.resolve({ data: null }),
+  ]);
+  const previewUrl = signed?.data?.signedUrl ?? null;
 
   const isImage = asset.mime_type?.startsWith("image/");
   const isVideo = asset.mime_type?.startsWith("video/");
@@ -94,72 +96,72 @@ export default async function MediaAssetDetailPage({
 
   return (
     <main className="mx-auto max-w-2xl px-6 py-12">
-      <Link href="/dashboard/media" className="text-sm underline opacity-70">
-        ← Media Library
+      <Link href="/dashboard/media" className="inline-flex items-center gap-1 text-sm text-text-secondary hover:text-text">
+        <ChevronLeft className="h-3.5 w-3.5" /> Media Library
       </Link>
 
-      <h1 className="mb-4 mt-2 text-2xl font-semibold break-all">
+      <h1 className="mb-4 mt-3 break-all text-[26px] font-semibold tracking-[-0.025em] text-text">
         {asset.original_filename ?? asset.id}
       </h1>
 
       {previewUrl && isImage && (
         // eslint-disable-next-line @next/next/no-img-element -- signed URL expira, sem sentido usar next/image
-        <img src={previewUrl} alt="" className="mb-6 max-h-96 rounded border object-contain" />
+        <img src={previewUrl} alt="" className="mb-6 max-h-96 rounded-[var(--radius-panel-lg)] border border-border-subtle object-contain" />
       )}
       {previewUrl && isVideo && (
-        <video src={previewUrl} controls className="mb-6 max-h-96 w-full rounded border" />
+        <video src={previewUrl} controls className="mb-6 max-h-96 w-full rounded-[var(--radius-panel-lg)] border border-border-subtle" />
       )}
       {!previewUrl && asset.status === "failed" && (
-        <div className="mb-6 rounded border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+        <div className="mb-6 rounded-[var(--radius-panel-lg)] border border-danger/30 bg-danger-soft p-4 text-sm text-danger">
           {friendlyUploadError(asset.processing_error?.reason)}
         </div>
       )}
       {!previewUrl && (asset.status === "pending" || asset.status === "processing") && (
-        <div className="mb-6 rounded border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+        <div className="mb-6 rounded-[var(--radius-panel-lg)] border border-warning/30 bg-warning-soft p-4 text-sm text-warning">
           Ainda processando…
         </div>
       )}
 
-      <dl className="divide-y">
+      <dl className="divide-y divide-border-subtle">
         {fields.map(([label, value]) => (
           <div key={label} className="flex justify-between gap-4 py-2 text-sm">
-            <dt className="opacity-60">{label}</dt>
-            <dd className="text-right break-all">{value}</dd>
+            <dt className="text-text-muted">{label}</dt>
+            <dd className="break-all text-right text-text">{value}</dd>
           </div>
         ))}
       </dl>
 
       <section className="mt-8">
-        <h2 className="mb-2 text-sm font-medium opacity-70">Histórico de uso</h2>
+        <h2 className="mb-2 text-sm font-medium text-text-secondary">Histórico de uso</h2>
         {usage && usage.length > 0 ? (
-          <ul className="divide-y text-sm">
+          <ul className="divide-y divide-border-subtle text-sm">
             {usage.map((u) => (
               <li key={u.id} className="flex justify-between py-2">
-                <span>
+                <span className="text-text">
                   {u.profile?.name ?? "Perfil removido"} · {u.platform}
                   {u.context ? ` · ${u.context}` : ""}
                 </span>
-                <span className="opacity-60">
+                <span className="text-text-muted">
                   {new Date(u.used_at).toLocaleDateString("pt-BR")}
                 </span>
               </li>
             ))}
           </ul>
         ) : (
-          <p className="text-sm opacity-60">Essa mídia ainda não foi usada em nenhum perfil.</p>
+          <p className="text-sm text-text-muted">Essa mídia ainda não foi usada em nenhum perfil.</p>
         )}
       </section>
 
       <details className="mt-8 text-sm">
-        <summary className="cursor-pointer opacity-60">Informações técnicas</summary>
-        <dl className="mt-2 divide-y">
+        <summary className="cursor-pointer text-text-muted">Informações técnicas</summary>
+        <dl className="mt-2 divide-y divide-border-subtle">
           <div className="flex justify-between gap-4 py-2">
-            <dt className="opacity-60">SHA-256</dt>
-            <dd className="text-right break-all">{asset.sha256 ?? "—"}</dd>
+            <dt className="text-text-muted">SHA-256</dt>
+            <dd className="break-all text-right text-text">{asset.sha256 ?? "—"}</dd>
           </div>
           <div className="flex justify-between gap-4 py-2">
-            <dt className="opacity-60">Storage key</dt>
-            <dd className="text-right break-all">{asset.storage_key}</dd>
+            <dt className="text-text-muted">Storage key</dt>
+            <dd className="break-all text-right text-text">{asset.storage_key}</dd>
           </div>
         </dl>
       </details>
