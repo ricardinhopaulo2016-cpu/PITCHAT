@@ -9,7 +9,9 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "supabase": "node scripts/supabase-cli.mjs"
+    "supabase": "node scripts/supabase-cli.mjs",
+    "vercel-cli": "node scripts/vercel-cli.mjs",
+    "vercel-api": "node scripts/vercel-api.mjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.10",
@@ -48,6 +50,7 @@
     "supabase": "^2.117.0",
     "tailwindcss": "^4",
     "typescript": "^5",
+    "vercel": "^59.26.0",
     "vitest": "^5.0.0"
   }
 }
