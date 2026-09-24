@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createHash, createHmac } from "node:crypto";
+import { createHash } from "node:crypto";
 import { verifyMetaWebhookSignature } from "@/lib/meta/signature";
 import { classifyWebhookEventType } from "@/lib/meta/events";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -31,13 +31,28 @@ export async function GET(request: Request) {
  * e enfileira (seção 6 do briefing). Resposta rápida é o que importa.
  */
 export async function POST(request: Request) {
-  const appSecret = process.env.META_APP_SECRET;
+  // Achado real, confirmado ao vivo byte a byte em 24/09/2026 (comparando
+  // HMAC-SHA256 dos bytes brutos recebidos contra as duas chaves do
+  // projeto): o webhook do produto "Instagram API with Instagram Login" é
+  // assinado com o INSTAGRAM APP SECRET, não com o Meta App Secret
+  // "principal" (`META_APP_SECRET`, usado só pra subscriptions a nível de
+  // app — ver lib/meta/oauth.ts::subscribeAccountToWebhooks). Faz sentido
+  // architeturalmente: OAuth inteiro já usa a identidade do Instagram App
+  // (`INSTAGRAM_APP_ID`/`INSTAGRAM_APP_SECRET`, ver lib/meta/oauth.ts) — a
+  // Meta assina o webhook desse produto com o secret do MESMO app, não do
+  // app "guarda-chuva". `META_APP_SECRET` nunca validou nenhuma entrega real
+  // desde o início do projeto; `INSTAGRAM_APP_SECRET` sim. Reaproveitado
+  // aqui explicitamente (em vez de uma env var nova só pra isso) porque já é
+  // exatamente o mesmo secret, por definição — duas variáveis pro mesmo
+  // valor só criaria risco de ficarem dessincronizadas. Ver
+  // docs/PITCHAT_META_INTEGRATION.md §3.
+  const webhookSigningSecret = process.env.INSTAGRAM_APP_SECRET;
   const admin = getSupabaseAdminClient();
 
   if (!admin) {
     return NextResponse.json({ error: "SUPABASE_NOT_CONFIGURED" }, { status: 503 });
   }
-  if (!appSecret) {
+  if (!webhookSigningSecret) {
     return NextResponse.json({ error: "META_NOT_CONFIGURED" }, { status: 503 });
   }
 
@@ -49,26 +64,12 @@ export async function POST(request: Request) {
   const rawBody = rawBytes.toString("utf8");
   const signature = request.headers.get("x-hub-signature-256");
 
-  if (!verifyMetaWebhookSignature(rawBody, signature, appSecret)) {
-    // Diagnóstico definitivo (achado real 23-24/09/2026): META_APP_SECRET
-    // seguia "inválido" mesmo depois de confirmado visualmente igual ao App
-    // Secret mostrado em App settings → Basic — hipótese: talvez o webhook
-    // do produto "Instagram API with Instagram Login" seja assinado com o
-    // INSTAGRAM_APP_SECRET (o do Instagram App, usado hoje só no OAuth), não
-    // com o Meta App Secret principal. Testa as DUAS chaves contra os MESMOS
-    // bytes brutos recebidos, sem nunca logar nenhum dos dois secrets — só
-    // booleano de match e um fingerprint SHA-256 truncado (one-way, serve só
-    // pra diferenciar "qual secret é esse" sem expor o valor). Nunca aceita
-    // nenhuma delas como válida aqui — só registra pra decidir depois.
-    const igSecret = process.env.INSTAGRAM_APP_SECRET;
-    const fingerprint = (secret: string | undefined) =>
-      secret ? createHash("sha256").update(secret).digest("hex").slice(0, 12) : null;
-    const signedWith = (secret: string | undefined) =>
-      secret ? `sha256=${createHmac("sha256", secret).update(rawBytes).digest("hex")}` : null;
-
-    const metaExpected = signedWith(appSecret);
-    const igExpected = signedWith(igSecret);
-
+  if (!verifyMetaWebhookSignature(rawBody, signature, webhookSigningSecret)) {
+    // Gap real de observabilidade descoberto durante o primeiro teste E2E
+    // (10/09/2026): antes disso, uma assinatura inválida só retornava 401 e
+    // NUNCA gravava nada. `receivedSignatureHeader` (o HMAC que a Meta
+    // mandou, não é segredo) foi o que permitiu confirmar o bug do
+    // parágrafo acima comparando offline contra as duas chaves.
     const externalEventId = createHash("sha256").update(rawBody).digest("hex");
     await admin.from("webhook_events").upsert(
       {
@@ -77,17 +78,10 @@ export async function POST(request: Request) {
         event_type: "invalid_signature",
         payload: { rawBodyPreview: rawBody.slice(0, 2000) },
         status: "failed",
-        // `signature`/`*Expected` (HMACs) NÃO são segredo — são valores já
-        // públicos por natureza (é isso que vai no header de toda entrega).
-        // Só os secrets em si nunca são logados (só o fingerprint one-way).
         last_error: {
           reason: "INVALID_SIGNATURE",
           signatureHeaderPresent: !!signature,
           receivedSignatureHeader: signature,
-          metaAppSecretMatch: !!signature && signature === metaExpected,
-          instagramAppSecretMatch: !!signature && signature === igExpected,
-          metaAppSecretFingerprint: fingerprint(appSecret),
-          instagramAppSecretFingerprint: fingerprint(igSecret),
         },
       },
       { onConflict: "provider,external_event_id", ignoreDuplicates: true }

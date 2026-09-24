@@ -32,7 +32,7 @@ O PITCHAT terá **Meta App próprio** — não reutilizar app de outro projeto (
    - `META_APP_ID` (App ID)
    - `META_APP_SECRET` (App Secret)
 
-   ⚠️ **Achado real (10/09/2026, erro "Invalid platform app")**: esses dois valores são o Meta App ID/Secret **principal** — usados **só** pra webhook (`X-Hub-Signature-256`) e subscriptions a nível de app (§6/§3 deste doc). **Não são o que vai no OAuth.** Pra OAuth, anote **também** em **App Dashboard → Instagram → API setup with Instagram login → Business login settings**:
+   ⚠️ **Achado real (10/09/2026, erro "Invalid platform app")**: esses dois valores são o Meta App ID/Secret **principal** — usados **só** pra subscriptions a nível de app (§6 deste doc). **Não são o que vai no OAuth**, nem (achado posterior, 24/09/2026 — ver §3) **o que assina o webhook**: isso é o `INSTAGRAM_APP_SECRET` abaixo. Pra OAuth, anote **também** em **App Dashboard → Instagram → API setup with Instagram login → Business login settings**:
    - `INSTAGRAM_APP_ID` ("Instagram App ID" — é um número diferente do App ID principal)
    - `INSTAGRAM_APP_SECRET` ("Instagram app secret" — também diferente do App Secret principal)
 
@@ -110,7 +110,9 @@ Fonte: comportamento real da Graph API, reproduzido e confirmado nesta sessão (
 ## 3. Webhooks
 
 - **Verificação inicial**: `GET` no endpoint configurado, com `hub.mode=subscribe`, `hub.challenge` (ecoar de volta) e `hub.verify_token` (comparar com `META_WEBHOOK_VERIFY_TOKEN`). Já implementado em `app/api/webhooks/meta/route.ts` (`GET`).
-- **Assinatura**: header `X-Hub-Signature-256` = `sha256=` + HMAC-SHA256(payload bruto, `META_APP_SECRET`). No PITCHAT é **obrigatório** rejeitar payload sem assinatura válida (já implementado, `lib/meta/signature.ts`).
+- **Assinatura**: header `X-Hub-Signature-256` = `sha256=` + HMAC-SHA256(payload bruto, App Secret). No PITCHAT é **obrigatório** rejeitar payload sem assinatura válida (já implementado, `lib/meta/signature.ts`).
+
+  ⚠️ **Achado real (24/09/2026) — o App Secret certo aqui é o `INSTAGRAM_APP_SECRET`, NÃO o `META_APP_SECRET`.** Contradiz o que este documento afirmava antes (e o que a doc oficial não deixa explícito): pro produto "Instagram API with Instagram Login", a Meta assina o webhook com o secret do **Instagram App** (o mesmo usado no OAuth, `INSTAGRAM_APP_ID`/`INSTAGRAM_APP_SECRET` — ver §2), não com o Meta App Secret "principal" (`META_APP_SECRET`, App settings → Basic). Confirmado byte a byte: comparando `HMAC-SHA256(rawBody, cada um dos dois secrets)` contra o `X-Hub-Signature-256` de entregas reais, só `INSTAGRAM_APP_SECRET` bateu — `META_APP_SECRET` nunca validou nenhuma entrega desde o início do projeto. Implementado em `app/api/webhooks/meta/route.ts` (`webhookSigningSecret = process.env.INSTAGRAM_APP_SECRET`). `META_APP_SECRET` continua existindo só pro que já era dele antes (subscriptions/configuração a nível de App Dashboard, §1) — nunca mais usar pra verificar assinatura de webhook.
 - **Subscribe via API** (alternativa a configurar manualmente no dashboard): `POST /me/subscribed_apps?subscribed_fields=comments,messages,messaging_postbacks&access_token=<token da conta>`.
 - **Fields disponíveis** (Instagram): `comments`, `live_comments`, `mentions`, `messages`, `message_echoes`, `message_edit`, `message_reactions`, `messaging_handover`, `messaging_optins`, `messaging_policy_enforcement`, `messaging_postbacks`, `messaging_referral`, `messaging_seen`, `response_feedback`, `standby`, `story_insights`. **V1 usa**: `comments`, `messages`, `messaging_postbacks` (`message_reactions` opcional).
 
