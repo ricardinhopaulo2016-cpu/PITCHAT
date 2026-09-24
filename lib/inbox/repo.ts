@@ -102,6 +102,8 @@ export type TimelineEntry = {
   at: string;
   actor: "USER" | "AUTOMATION" | "HUMAN";
   text: string | null;
+  /** Só presente em entradas de comentário (kind=comment) — PK interna de `comments`, usada por "Responder" (POST /api/comments/[id]/reply). Nunca o external_comment_id da Meta. */
+  commentId?: string;
 };
 
 export type AutomationRunSummary = {
@@ -160,7 +162,13 @@ export async function loadConversationTimeline(
   const timeline: TimelineEntry[] = [];
 
   for (const c of comments ?? []) {
-    timeline.push({ id: `comment-${c.id}`, at: c.created_at as string, actor: "USER", text: c.text as string | null });
+    timeline.push({
+      id: `comment-${c.id}`,
+      at: c.created_at as string,
+      actor: "USER",
+      text: c.text as string | null,
+      commentId: c.id as string,
+    });
   }
 
   for (const s of publicReplySteps ?? []) {

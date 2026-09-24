@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { SignalMarker } from "@/components/icons/pitchat";
 import { TakeoverToggle } from "./takeover-toggle";
 import { MessageComposer } from "./message-composer";
+import { PublicReplyAction } from "./public-reply-action";
 
 export const dynamic = "force-dynamic";
 
@@ -152,6 +153,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
                           >
                             {entry.text ?? <span className="italic text-text-muted">sem texto</span>}
                           </p>
+                          {entry.commentId && <PublicReplyAction commentId={entry.commentId} />}
                         </li>
                       );
                     })}
