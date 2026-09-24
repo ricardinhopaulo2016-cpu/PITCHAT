@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAuthContext } from "@/lib/auth/session";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { loadAutomationForWorkspace, loadDraftVersion } from "@/lib/automation/repo";
+import { computeGraphReviewHash, isReviewConfirmed } from "@/lib/automation/review-hash";
 
 export const runtime = "nodejs";
 
@@ -10,8 +11,14 @@ export const runtime = "nodejs";
  * docs/PITCHAT_ARCHITECTURE.md §9, quem já está executando uma versão antiga
  * termina nela) e vira `automations.current_version_id`. Não muda
  * `automations.status` — publicar não é o mesmo que ativar (botão separado).
+ *
+ * Gate de revisão (B3, auditoria 24/09/2026 — foi possível publicar conteúdo
+ * real inadequado sem revisão nenhuma): exige `{confirmed:true,
+ * reviewedGraphHash}` batendo com o hash do draft de verdade. Enforçado aqui
+ * no servidor, não só no client — um checkbox só na UI seria trivialmente
+ * contornável chamando este endpoint direto.
  */
-export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const auth = await getAuthContext();
   if (!auth) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
@@ -24,6 +31,17 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
 
   const draft = await loadDraftVersion(admin, id);
   if (!draft) return NextResponse.json({ error: "NO_DRAFT_TO_PUBLISH" }, { status: 400 });
+
+  const body = await request.json().catch(() => ({}));
+  const expectedHash = await computeGraphReviewHash(draft.graph);
+  if (!isReviewConfirmed(body, expectedHash)) {
+    // Sem confirmação nenhuma = REVIEW_NOT_CONFIRMED; confirmação de um
+    // conteúdo que já não é mais o atual (editado em outra aba depois de
+    // abrir o modal) = mesmo erro, mas o client trata como "conteúdo mudou"
+    // (ver flow-editor.tsx) — o hash sempre diferencia os dois casos por
+    // trás, não precisa de um código de erro a mais.
+    return NextResponse.json({ error: body.confirmed ? "REVIEW_STALE" : "REVIEW_NOT_CONFIRMED" }, { status: 400 });
+  }
 
   const now = new Date().toISOString();
   const { error: versionError } = await admin

@@ -58,6 +58,7 @@ export default async function AutomationEditorPage({ params }: { params: Promise
         initialSteps={spec?.steps ?? []}
         decompileFailed={version !== null && spec === null}
         hasDraft={!!draft}
+        accountUsername={socialAccount?.username ?? null}
       />
     </>
   );

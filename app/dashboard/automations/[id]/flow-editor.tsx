@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
+import { PublishReviewDialog } from "./publish-review-dialog";
 
 const STEP_LABELS: Record<FlowStepType, string> = {
   KEYWORD_MATCH: "Keyword Match",
@@ -336,17 +337,20 @@ export function FlowEditor({
   initialSteps,
   decompileFailed,
   hasDraft,
+  accountUsername,
 }: {
   automationId: string;
   initialSteps: FlowStep[];
   decompileFailed: boolean;
   hasDraft: boolean;
+  accountUsername: string | null;
 }) {
   const router = useRouter();
   const toast = useToast();
   const [steps, setSteps] = useState<FlowStep[]>(initialSteps);
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   if (decompileFailed) {
@@ -394,29 +398,51 @@ export function FlowEditor({
     router.refresh();
   }
 
-  async function publish() {
-    setPublishing(true);
+  // Gate de revisão (B3, auditoria 24/09/2026): "Publicar versão" nunca mais
+  // publica direto — primeiro salva o draft, depois abre o modal de revisão.
+  // A publicação de fato só acontece em confirmPublish, depois do checkbox
+  // marcado (ver publish-review-dialog.tsx).
+  async function openReview() {
     setError(null);
+    setSaving(true);
     const saveRes = await fetch(`/api/automations/${automationId}/draft`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ steps }),
     });
+    setSaving(false);
     if (!saveRes.ok) {
-      setPublishing(false);
       const json = await saveRes.json();
       setError(json.detail ?? json.error ?? "Falha ao salvar antes de publicar");
       toast("Não foi possível publicar a automação.", "danger");
       return;
     }
-    const res = await fetch(`/api/automations/${automationId}/publish`, { method: "POST" });
+    router.refresh();
+    setReviewOpen(true);
+  }
+
+  async function confirmPublish(reviewedGraphHash: string) {
+    setPublishing(true);
+    setError(null);
+    const res = await fetch(`/api/automations/${automationId}/publish`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confirmed: true, reviewedGraphHash }),
+    });
     const json = await res.json();
     setPublishing(false);
     if (!res.ok) {
-      setError(json.detail ?? json.error ?? "Falha ao publicar");
+      // REVIEW_STALE = o conteúdo mudou desde que o modal abriu (outra aba,
+      // por exemplo) — nunca publica com uma revisão que não é mais a atual.
+      const message =
+        json.error === "REVIEW_STALE"
+          ? "O conteúdo mudou desde que você abriu a revisão — reabra e confira de novo."
+          : (json.detail ?? json.error ?? "Falha ao publicar");
+      setError(message);
       toast("Não foi possível publicar a automação.", "danger");
       return;
     }
+    setReviewOpen(false);
     toast(`Automação publicada (v${json.publishedVersion}).`, "success");
     router.refresh();
   }
@@ -497,8 +523,8 @@ export function FlowEditor({
           <Button variant="secondary" onClick={saveDraft} disabled={saving || publishing}>
             {saving ? "Salvando…" : "Salvar rascunho"}
           </Button>
-          <Button variant="primary" onClick={publish} disabled={saving || publishing}>
-            {publishing ? "Publicando…" : "Publicar versão"}
+          <Button variant="primary" onClick={openReview} disabled={saving || publishing}>
+            {saving ? "Salvando…" : "Publicar versão"}
           </Button>
           {error && <span className="text-sm text-danger">{error}</span>}
         </div>
@@ -520,6 +546,15 @@ export function FlowEditor({
           </div>
         </dl>
       </div>
+
+      <PublishReviewDialog
+        open={reviewOpen}
+        onOpenChange={setReviewOpen}
+        accountUsername={accountUsername}
+        steps={steps}
+        onConfirm={confirmPublish}
+        confirming={publishing}
+      />
     </div>
   );
 }
