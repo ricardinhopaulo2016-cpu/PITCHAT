@@ -1,8 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MetaClient } from "@/lib/meta/client";
 import { decryptToken } from "@/lib/meta/token-crypto";
-import type { InstagramCommentReceived, InstagramQuickReplyReceived } from "@/lib/meta/events";
+import type { InstagramCommentReceived, InstagramMessageReceived, InstagramQuickReplyReceived } from "@/lib/meta/events";
 import { advanceRun, claimWaitingRun, parseQuickReplyPayload, type SocialAccountForEngine } from "./engine";
+import { recordInboundMessage } from "./messages";
 import type { Graph } from "./graph";
 import type { ExecutionContext } from "./node-handlers";
 
@@ -66,6 +67,22 @@ export async function ingestInstagramComment(
 
   const conversation = await upsertConversation(admin, socialAccount.workspace_id, socialAccount.id, contact.id);
 
+  // Human takeover (achado real 24/09/2026): antes disso, automation_enabled
+  // só era consultado DENTRO de um CONDITION node opcional — uma automação
+  // sem esse node ignorava completamente que um humano assumiu a conversa.
+  // Agora é um portão de verdade: nenhuma automação nova dispara pra essa
+  // conversa enquanto automation_enabled=false. O comentário/contato/
+  // conversa continuam sendo gravados normalmente — só a automação não roda.
+  // `=== false` de propósito (nunca `!conversation.automation_enabled`) —
+  // só bloqueia com um valor EXPLICITAMENTE false; qualquer coisa ambígua
+  // (null/undefined) nunca deveria acontecer de verdade (a coluna tem
+  // `default true`), mas se acontecesse, falhar aberto (automação roda) é
+  // sempre menos surpreendente que falhar fechado (automação para sem
+  // ninguém ter pedido).
+  if (conversation.automation_enabled === false) {
+    return { processed: false, reason: "AUTOMATION_DISABLED_HUMAN_TAKEOVER" };
+  }
+
   const automations = await loadActiveAutomations(admin, socialAccount.profile_id);
   const socialAccountForEngine: SocialAccountForEngine = {
     id: socialAccount.id,
@@ -121,6 +138,52 @@ export async function ingestInstagramQuickReply(
 
   const run = await claimWaitingRun(admin, parsed.runId, "quick_reply");
   if (!run) return { processed: false, reason: "RUN_JA_RETOMADO_OU_NAO_ENCONTRADO" }; // idempotência: outro webhook já pegou
+
+  // O clique é real independente do que a gente decidir fazer com ele —
+  // grava sempre, mesmo se a automação estiver pausada por human takeover
+  // (ver checagem logo abaixo). `run.conversation_id` já vem da própria
+  // claimWaitingRun (select() sem args traz todas as colunas).
+  if (run.conversation_id) {
+    await recordInboundMessage(admin, {
+      workspaceId: run.workspace_id,
+      conversationId: run.conversation_id,
+      externalMessageId: event.externalMessageId,
+      type: "quick_reply",
+      text: event.buttonTitle,
+      payload: { payload: event.payload },
+    });
+  }
+
+  // Human takeover (achado real 24/09/2026): se um humano assumiu a
+  // conversa DEPOIS que o botão foi mandado mas ANTES do clique chegar, a
+  // automação não deve retomar sozinha — o clique fica registrado (acima),
+  // mas a run não avança. Nunca comportamento ambíguo: falha explícito, não
+  // finge que rodou.
+  if (run.conversation_id) {
+    const { data: conversation } = await admin
+      .from("conversations")
+      .select("automation_enabled")
+      .eq("id", run.conversation_id)
+      .maybeSingle();
+    if (conversation && conversation.automation_enabled === false) {
+      await admin.from("automation_run_steps").insert({
+        automation_run_id: run.id,
+        node_id: parsed.nodeId,
+        node_type: "QUICK_REPLY_RESUME",
+        status: "skipped",
+        error: { message: "Conversa em human takeover — clique registrado, automação não retomada." },
+        completed_at: new Date().toISOString(),
+      });
+      // Devolve a run pro estado 'waiting' de onde saiu — claimWaitingRun já
+      // marcou 'running' otimisticamente; sem isso ela ficaria presa em
+      // 'running' pra sempre (mesmo bug de fundo já documentado nesta rota).
+      await admin
+        .from("automation_runs")
+        .update({ status: "waiting", waiting_reason: "quick_reply", updated_at: new Date().toISOString() })
+        .eq("id", run.id);
+      return { processed: false, reason: "AUTOMATION_DISABLED_HUMAN_TAKEOVER" };
+    }
+  }
 
   // Mesmo cuidado do node DELAY (ver app/api/jobs/resume-automation-run):
   // sem try/catch aqui, uma exceção depois do claim (token ausente, versão
@@ -185,6 +248,36 @@ export async function ingestInstagramQuickReply(
       .eq("id", run.id);
     return { processed: false, reason: `RESUME_FAILED: ${message}` };
   }
+}
+
+/**
+ * DM avulsa recebida (sem quick reply) — achado real 24/09/2026: até aqui
+ * era completamente ignorada (nem contact/conversation eram tocados),
+ * então uma resposta manual do usuário no Inbox era invisível pra sempre.
+ * Continua NÃO disparando nenhuma automação (trigger suportado no V1 é só
+ * comentário) — só grava a mensagem real, pro Inbox mostrar de verdade.
+ */
+export async function ingestInstagramMessage(
+  admin: SupabaseClient,
+  socialAccount: SocialAccountRow,
+  event: InstagramMessageReceived
+): Promise<{ processed: boolean; reason?: string }> {
+  if (event.fromUserId && event.fromUserId === socialAccount.external_account_id) {
+    return { processed: false, reason: "IGNORED_OWN_MESSAGE" }; // eco da própria mensagem que a gente mandou
+  }
+
+  const contact = await upsertContact(admin, socialAccount.workspace_id, event.fromUserId, null);
+  const conversation = await upsertConversation(admin, socialAccount.workspace_id, socialAccount.id, contact.id);
+
+  await recordInboundMessage(admin, {
+    workspaceId: socialAccount.workspace_id,
+    conversationId: conversation.id,
+    externalMessageId: event.externalMessageId,
+    type: "text",
+    text: event.text,
+  });
+
+  return { processed: true };
 }
 
 /** Acha o próximo node depois do QUICK_REPLY que pausou, seguindo a aresta certa. */

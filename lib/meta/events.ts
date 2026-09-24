@@ -52,9 +52,12 @@ export type InstagramMessageReceived = {
 export type InstagramQuickReplyReceived = {
   type: "InstagramQuickReplyReceived";
   externalAccountId: string;
+  externalMessageId: string | null;
   fromUserId: string;
-  /** O payload que A GENTE definiu ao mandar o quick reply — nunca o título do botão. */
+  /** O payload que A GENTE definiu ao mandar o quick reply — nunca o título do botão. Único usado pra decidir o fluxo (ver lib/automation/engine.ts::parseQuickReplyPayload). */
   payload: string;
+  /** Título do botão escolhido, só pra exibição no Inbox (docs/PITCHAT_META_INTEGRATION.md §5: "message.text = título escolhido") — nunca usar isso pra lógica. */
+  buttonTitle: string | null;
   timestamp: string;
 };
 
@@ -76,7 +79,7 @@ type RawMessagingEvent = {
   recipient?: { id?: string };
   timestamp?: number;
   message?: { mid?: string; text?: string; quick_reply?: { payload?: string } };
-  postback?: { payload?: string };
+  postback?: { payload?: string; title?: string };
 };
 
 // O `value` de um change pode ser um comentário ou um evento de mensagem —
@@ -148,8 +151,10 @@ function messagingValueToEvent(
     return {
       type: "InstagramQuickReplyReceived",
       externalAccountId,
+      externalMessageId: msg.message?.mid ?? null,
       fromUserId,
       payload: quickReplyPayload,
+      buttonTitle: msg.message?.text ?? msg.postback?.title ?? null,
       timestamp,
     };
   }

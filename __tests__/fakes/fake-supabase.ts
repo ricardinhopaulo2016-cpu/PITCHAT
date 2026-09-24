@@ -9,6 +9,12 @@ export function createFakeSupabase() {
     automation_runs: [],
     tags: [],
     contact_tags: [],
+    messages: [],
+    contacts: [],
+    conversations: [],
+    comments: [],
+    automations: [],
+    audit_logs: [],
   };
 
   function matches(row: Record<string, unknown>, filters: [string, unknown][]) {
@@ -16,9 +22,11 @@ export function createFakeSupabase() {
   }
 
   function builder(table: string) {
+    tables[table] ??= []; // qualquer tabela nova usada num teste funciona sem precisar lembrar de listar aqui em cima
     const filters: [string, unknown][] = [];
     let pendingUpdate: Record<string, unknown> | null = null;
     let pendingInsert: Record<string, unknown> | null = null;
+    let insertAttempted = false; // distingue "nunca chamou insert/upsert" de "chamou upsert mas ignorou por duplicata"
 
     const api = {
       select() {
@@ -28,7 +36,14 @@ export function createFakeSupabase() {
         filters.push([col, val]);
         return api;
       },
+      // `.not(col, "is", null)` etc — só o suficiente pra não quebrar quem
+      // encadeia (ex: lib/automation/ingest.ts::loadActiveAutomations); não
+      // filtra de verdade no fake, nenhum teste hoje depende dessa negação.
+      not() {
+        return api;
+      },
       insert(row: Record<string, unknown>) {
+        insertAttempted = true;
         pendingInsert = { id: row.id ?? `fake-${tables[table].length + 1}`, ...row };
         tables[table].push(pendingInsert);
         return api;
@@ -37,9 +52,30 @@ export function createFakeSupabase() {
         pendingUpdate = patch;
         return api;
       },
-      upsert(row: Record<string, unknown>) {
-        tables[table].push(row);
-        return Promise.resolve({ data: row, error: null });
+      // Chainable (igual ao Supabase real: upsert(...).select().maybeSingle())
+      // — respeita onConflict + ignoreDuplicates igual o código de produção
+      // espera (ver lib/automation/ingest.ts::ingestInstagramComment).
+      upsert(row: Record<string, unknown>, opts?: { onConflict?: string; ignoreDuplicates?: boolean }) {
+        insertAttempted = true;
+        const conflictCols = (opts?.onConflict ?? "")
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+        const conflictIdx =
+          conflictCols.length > 0
+            ? tables[table].findIndex((r) => conflictCols.every((c) => r[c] === row[c]))
+            : -1;
+
+        if (conflictIdx !== -1 && opts?.ignoreDuplicates) {
+          pendingInsert = null; // já existia, upsert real também não retorna a linha nesse caso
+        } else if (conflictIdx !== -1) {
+          tables[table][conflictIdx] = { ...tables[table][conflictIdx], ...row };
+          pendingInsert = tables[table][conflictIdx];
+        } else {
+          pendingInsert = { id: row.id ?? `fake-${tables[table].length + 1}`, ...row };
+          tables[table].push(pendingInsert);
+        }
+        return api;
       },
       delete() {
         return {
@@ -57,6 +93,7 @@ export function createFakeSupabase() {
           tables[table][idx] = { ...tables[table][idx], ...pendingUpdate };
           return { data: tables[table][idx], error: null };
         }
+        if (insertAttempted) return { data: pendingInsert, error: null };
         const row = tables[table].find((r) => matches(r, filters));
         return { data: row ?? null, error: null };
       },
@@ -72,7 +109,7 @@ export function createFakeSupabase() {
           resolve({ data: pendingInsert, error: null });
           return;
         }
-        if (pendingInsert) {
+        if (insertAttempted) {
           resolve({ data: pendingInsert, error: null });
           return;
         }

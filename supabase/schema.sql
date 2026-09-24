@@ -104,6 +104,7 @@ create table if not exists conversations (
   automation_enabled boolean not null default true,
   assigned_to uuid references auth.users(id),
   last_message_at timestamptz,
+  last_read_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (social_account_id, contact_id)

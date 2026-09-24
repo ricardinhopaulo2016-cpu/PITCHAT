@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getQstashReceiver, getAppUrl } from "@/lib/qstash";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { normalizeMetaWebhookPayload, type RawMetaWebhookPayload } from "@/lib/meta/events";
-import { ingestInstagramComment, ingestInstagramQuickReply } from "@/lib/automation/ingest";
+import { ingestInstagramComment, ingestInstagramMessage, ingestInstagramQuickReply } from "@/lib/automation/ingest";
 import { realMetaClient } from "@/lib/meta/client";
 import { decideWebhookEventOutcome, type EventMatchResult } from "@/lib/meta/webhook-outcome";
 
@@ -85,9 +85,12 @@ export async function POST(request: Request) {
         await ingestInstagramComment(admin, realMetaClient, socialAccount, event);
       } else if (event.type === "InstagramQuickReplyReceived") {
         await ingestInstagramQuickReply(admin, realMetaClient, socialAccount, event);
+      } else if (event.type === "InstagramMessageReceived") {
+        // Não dispara automação (trigger suportado no V1 continua sendo só
+        // comentário) — só grava a mensagem real, pro Inbox mostrar de
+        // verdade (achado real 24/09/2026: antes disso, era só descartada).
+        await ingestInstagramMessage(admin, socialAccount, event);
       }
-      // InstagramMessageReceived (DM avulsa, sem quick reply) não dispara
-      // flow no V1 — trigger suportado é só comentário, por enquanto.
     }
 
     const outcome = decideWebhookEventOutcome(matchResults);

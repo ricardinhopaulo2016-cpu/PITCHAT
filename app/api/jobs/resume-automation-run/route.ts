@@ -78,11 +78,32 @@ export async function POST(request: Request) {
 
     const { data: conversation, error: conversationError } = await admin
       .from("conversations")
-      .select("social_account_id, contact:contacts(platform_user_id)")
+      .select("social_account_id, automation_enabled, contact:contacts(platform_user_id)")
       .eq("id", run.conversation_id)
       .single();
     if (conversationError || !conversation) {
       throw new Error(`Conversation não encontrada: ${conversationError?.message}`);
+    }
+
+    // Human takeover (achado real 24/09/2026): um DELAY/retry agendado antes
+    // do takeover não deve mandar mensagem nenhuma depois que um humano
+    // assumiu. Devolve a run pro estado 'waiting' de onde saiu (nunca
+    // 'failed' — não é uma falha, é uma pausa deliberada) e registra
+    // explicitamente por quê, nunca silencioso.
+    if (conversation.automation_enabled === false) {
+      await admin.from("automation_run_steps").insert({
+        automation_run_id: run.id,
+        node_id: run.cursor_node_id ?? "unknown",
+        node_type: waitingReason === "retry" ? "RETRY_RESUME" : "DELAY_RESUME",
+        status: "skipped",
+        error: { message: "Conversa em human takeover — resume não avançou." },
+        completed_at: new Date().toISOString(),
+      });
+      await admin
+        .from("automation_runs")
+        .update({ status: "waiting", waiting_reason: waitingReason, updated_at: new Date().toISOString() })
+        .eq("id", run.id);
+      return NextResponse.json({ ok: true, skipped: "AUTOMATION_DISABLED_HUMAN_TAKEOVER" });
     }
 
     const { data: socialAccount, error: socialAccountError } = await admin

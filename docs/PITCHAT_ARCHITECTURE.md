@@ -174,6 +174,14 @@ Cada execução gera `automation_runs` + `automation_run_steps` (uma linha por s
 - Upload: limite de tamanho + validação de MIME real (não só extensão).
 - Rate limiting nas rotas de API.
 
+### 10.1 Env vars da Vercel — origem e status (achado real, 24/09/2026)
+
+Listando `env:list` via `scripts/vercel-api.mjs` (API REST da Vercel), 10 variáveis do projeto (`POSTGRES_URL`, `POSTGRES_PRISMA_URL`, `POSTGRES_URL_NON_POOLING`, `POSTGRES_USER`, `POSTGRES_HOST`, `POSTGRES_PASSWORD`, `POSTGRES_DATABASE`, `SUPABASE_URL`, `SUPABASE_JWT_SECRET`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY` — repare que alguns nomes colidem com os que a aplicação usa de verdade) parecem ter sido criadas automaticamente por uma **integração nativa Vercel↔Supabase** (marketplace), não pelo setup manual documentado em `supabase/README.md`.
+
+**Confirmado**: nenhum código em `app/`/`lib/` lê `POSTGRES_*` — grep no projeto inteiro não achou nenhuma ocorrência. As variáveis que a aplicação de fato usa são as SEM esse padrão de integração: `SUPABASE_URL`/`SUPABASE_SECRET_KEY`/`NEXT_PUBLIC_SUPABASE_URL`/`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (ver `lib/supabase/admin.ts`/`browser.ts`), que coexistem na Vercel com as da integração sob nomes parecidos mas não idênticos.
+
+**Status: `integration-managed`, aparentemente não usadas.** Não removidas ainda — decisão explícita do usuário de adiar até uma auditoria própria (confirmar se alguma outra ferramenta/dashboard da integração depende delas antes de apagar). Não remover sem esse passo.
+
 ## 11. Riscos / bloqueios conhecidos
 
 | Risco | Impacto | Mitigação |

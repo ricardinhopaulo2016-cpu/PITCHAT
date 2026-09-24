@@ -133,8 +133,10 @@ describe("normalizeMetaWebhookPayload", () => {
       {
         type: "InstagramQuickReplyReceived",
         externalAccountId: "acc1",
+        externalMessageId: "m2",
         fromUserId: "u1",
         payload: "run123:qr1:yes",
+        buttonTitle: "Me manda o vídeo", // só pra exibição no Inbox — a lógica usa `payload`, nunca isso
         timestamp: new Date(1893456000000).toISOString(),
       },
     ]);

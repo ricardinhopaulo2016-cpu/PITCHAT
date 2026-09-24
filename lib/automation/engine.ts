@@ -4,6 +4,7 @@ import { evaluateNode, type ExecutionContext } from "./node-handlers";
 import { MetaApiError, type MetaClient } from "@/lib/meta/client";
 import { checkUrlAllowed } from "./ssrf-guard";
 import { getRetryBackoffMinutes } from "./retry-policy";
+import { recordOutboundMessage } from "./messages";
 import * as qstash from "@/lib/qstash";
 
 const MAX_STEPS_PER_INVOCATION = 50; // trava de segurança contra loop infinito num grafo mal configurado
@@ -190,6 +191,16 @@ export async function advanceRun(
             ...(quickReplies ? { quickReplies } : {}),
           });
           await logStep(admin, run.id, currentNode.id, currentNode.type, "succeeded", null, result as never);
+          if (run.conversation_id) {
+            await recordOutboundMessage(admin, {
+              workspaceId: run.workspace_id,
+              conversationId: run.conversation_id,
+              externalMessageId: result.externalMessageId,
+              type: hasQuickReply ? "quick_reply" : "text",
+              text: outcome.text,
+              origin: "automation",
+            });
+          }
           if (hasQuickReply) {
             // Mesma pausa do node QUICK_REPLY (ver caso abaixo) — o botão
             // veio junto NESTA mensagem em vez de numa próxima separada, mas
@@ -222,6 +233,17 @@ export async function advanceRun(
                 text: outcome.text,
               });
           await logStep(admin, run.id, currentNode.id, currentNode.type, "succeeded", null, result as never);
+          if (run.conversation_id) {
+            await recordOutboundMessage(admin, {
+              workspaceId: run.workspace_id,
+              conversationId: run.conversation_id,
+              externalMessageId: result.externalMessageId,
+              type: outcome.button ? "button" : "text",
+              text: outcome.text,
+              origin: "automation",
+              ...(outcome.button ? { payload: { button: outcome.button } } : {}),
+            });
+          }
           break;
         }
 
@@ -238,6 +260,17 @@ export async function advanceRun(
             options: optionsWithPayload,
           });
           await logStep(admin, run.id, currentNode.id, currentNode.type, "succeeded", null, result as never);
+          if (run.conversation_id) {
+            await recordOutboundMessage(admin, {
+              workspaceId: run.workspace_id,
+              conversationId: run.conversation_id,
+              externalMessageId: result.externalMessageId,
+              type: "quick_reply",
+              text: outcome.text,
+              origin: "automation",
+              payload: { options: outcome.options },
+            });
+          }
           await updateRun(admin, run.id, {
             status: "waiting",
             waiting_reason: "quick_reply",

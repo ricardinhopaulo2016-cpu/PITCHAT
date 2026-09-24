@@ -120,6 +120,65 @@ describe("advanceRun", () => {
     expect(fake.__tables.automation_run_steps).toHaveLength(5);
   });
 
+  // Achado real da auditoria de 24/09/2026: `messages` existia no schema
+  // desde o início, mas nenhum código jamais escrevia nela — o Inbox não
+  // teria dado nenhum de verdade pra mostrar. PUBLIC_REPLY não conta (não é
+  // DM, fica só em automation_run_steps.output).
+  it("grava PRIVATE_REPLY na tabela messages (direction=outbound, origin=automation)", async () => {
+    const fake = createFakeSupabase();
+    seedRun(fake);
+    const meta = fakeMeta();
+
+    await advanceRun(fake as never, meta, {
+      run: fake.__tables.automation_runs[0] as never,
+      graph: linearGraph,
+      socialAccount,
+      recipientId: "user-igsid-1",
+      commentId: "comment-1",
+      ctx: baseCtx(),
+    });
+
+    expect(fake.__tables.messages).toHaveLength(1);
+    expect(fake.__tables.messages[0]).toMatchObject({
+      workspace_id: "ws1",
+      conversation_id: "conv1",
+      direction: "outbound",
+      origin: "automation",
+      type: "text",
+      text: "Oi! Aqui está o link.",
+      status: "sent",
+    });
+  });
+
+  it("grava SEND_MESSAGE com button na tabela messages com type=button", async () => {
+    const graph: Graph = {
+      nodes: [
+        { id: "trigger", type: "TRIGGER_COMMENT", data: {} },
+        {
+          id: "send",
+          type: "SEND_MESSAGE",
+          data: { text: "Tá na mão!", button: { title: "Assistir ao vídeo", url: "https://exemplo.com/v" } },
+        },
+      ],
+      edges: [{ from: "trigger", to: "send" }],
+    };
+    const fake = createFakeSupabase();
+    seedRun(fake);
+    const meta = fakeMeta();
+
+    await advanceRun(fake as never, meta, {
+      run: fake.__tables.automation_runs[0] as never,
+      graph,
+      socialAccount,
+      recipientId: "user-igsid-1",
+      commentId: null,
+      ctx: baseCtx(),
+    });
+
+    expect(fake.__tables.messages).toHaveLength(1);
+    expect(fake.__tables.messages[0]).toMatchObject({ type: "button", text: "Tá na mão!", direction: "outbound" });
+  });
+
   it("KEYWORD_MATCH sem bater termina o run sem mandar nenhuma mensagem", async () => {
     const fake = createFakeSupabase();
     seedRun(fake);
@@ -229,6 +288,8 @@ describe("advanceRun", () => {
     expect(run.status).toBe("waiting");
     expect(run.waiting_reason).toBe("quick_reply");
     expect(run.cursor_node_id).toBe("priv");
+    // type=quick_reply (não "text") porque o botão veio anexado nesta mensagem.
+    expect(fake.__tables.messages[0]).toMatchObject({ type: "quick_reply", text: "Quer receber o vídeo?" });
   });
 
   it("PRIVATE_REPLY sem quickReplyOptions continua sem pausar (comportamento antigo, inalterado)", async () => {
