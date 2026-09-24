@@ -204,7 +204,7 @@ O roadmap anterior (Fase 0–12, com Media Library nas Fases 2–3) está **subs
 - [x] **Fase F** — Quick Replies + resume flow: `buildQuickReplyPayload`/`parseQuickReplyPayload` em `lib/automation/engine.ts`, `ingestInstagramQuickReply` em `ingest.ts`
 - [x] **Fase G** — QStash + Delay: `lib/qstash.ts`, `app/api/jobs/resume-automation-run/route.ts`, `claimWaitingRun` (lock atômico)
 - [x] **Fase H** — Conditions + Tags + Fields: node types `CONDITION`/`ADD_TAG`/`REMOVE_TAG`/`SET_CUSTOM_FIELD` implementados
-- [ ] **Fase I** — Inbox + Human Takeover: **não implementado** — sem UI, `messages` sem código de leitura, sem botão pausar/retomar automação
+- [x] **Fase I** — Inbox + Human Takeover: **concluída e E2E validada em produção (24/09/2026)**, ver marco abaixo
 - [~] **Fase J** — Automation Editor: CRUD completo (`app/api/automations/**`) + editor sequencial V1 (`app/dashboard/automations/**`, `lib/automation/flow-spec.ts`) implementados em 09/09/2026, com o flow de referência "Instagram Comment → DM Test" disponível via botão de seed. Pendente: UI de Contacts (item 31), editor visual (canvas), CONDITION com segundo braço editável (V1 força `false` → END sempre)
 - [x] **Fase K** — Hardening + teste ponta a ponta real: **concluída em 24/09/2026**, com tráfego real do Instagram (ver marco abaixo). Ainda pendente dessa fase: rodar `supabase db dump` pra sincronizar `schema.sql` com as migrations; hardening P0 (Fase B do plano de auditoria, em andamento).
 
@@ -222,6 +222,17 @@ O roadmap anterior (Fase 0–12, com Media Library nas Fases 2–3) está **subs
 > Bugs reais encontrados e corrigidos nesse processo (não achados por teste automatizado — só apareceram contra a API real): ID da conta gravado errado no OAuth (app-scoped vs. real), secret errado validando o webhook (`META_APP_SECRET` vs. `INSTAGRAM_APP_SECRET`), e bubble duplicada no Quick Reply (texto repetido em duas mensagens separadas). Detalhes e commits em `PITCHAT_META_INTEGRATION.md`.
 >
 > Com o E2E mínimo fechado, a prioridade agora é hardening P0 (token refresh automático, eliminar falha silenciosa de `social_account` não encontrada, gate de revisão antes de publicar automação) antes de Inbox (I)/Contacts/editor visual.
+
+> **✅ MARCO — Inbox + Human Takeover E2E validado em produção (24/09/2026)**, na mesma conta de teste `@papagaio_milhas` (contato `@paulo.cadoxd`):
+> 1. ✅ "Assumir controle" real — `conversations.automation_enabled = false`, gravado em `audit_logs` (`conversation.human_takeover`)
+> 2. ✅ Comentário real feito com automação desligada → **nenhuma** `automation_run` criada (gate checado em `ingestInstagramComment`) — confirmado em dois comentários reais e distintos da Meta (não é o mesmo evento reprocessado)
+> 3. ✅ Reativação real — `automation_enabled = true`, gravado em `audit_logs` (`conversation.automation_reactivated`) → comentário seguinte voltou a disparar a automação normalmente numa `automation_run` real
+> 4. ✅ Envio manual de DM durante o takeover — mensagem enviada e confirmada recebida do lado do contato
+> 5. ✅ Timeline do Inbox (comments + messages + automation_run_steps) validada visualmente em produção, incluindo o contexto de post por comentário (ver achado abaixo) e o rótulo "Comentário"/"Mensagem" por entrada
+> 6. ✅ Botão "Responder publicamente" visível e presente na timeline pra cada comentário — ainda **sem** um clique real ponta a ponta confirmando a resposta pública chegando na Meta
+> 7. Contacts — telas no ar, sem teste E2E dedicado ainda
+>
+> Achado real nesse processo (não é bug — investigado e descartado com evidência): dois comentários reais "piada de papagaio" do mesmo contato, em dois posts diferentes, apareciam lado a lado na timeline com o mesmo texto — pareciam duplicata. Confirmado via `external_comment_id`/`external_media_id`/`webhook_events` distintos que eram dois eventos Meta genuinamente diferentes, cada um processado uma única vez. Corrigida a lacuna visual (não a ingestão): a timeline agora mostra "Comentário em post · `<id truncado>`" por entrada. Detalhes em `PITCHAT_META_INTEGRATION.md`.
 
 **Correção de bug encontrada em 09/09/2026**: `lib/meta/events.ts` só reconhecia `messages`/`messaging_postbacks` no formato legado `entry.messaging[]` (Messenger/Facebook Page) — a doc oficial revalidada mostra que o envelope com exemplo confirmado é `entry.changes[].{field,value}` (mesmo formato de `comments`). Corrigido para aceitar os dois formatos; ver `docs/PITCHAT_META_INTEGRATION.md` §3.
 
