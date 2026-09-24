@@ -1,5 +1,6 @@
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { getGraphApiVersion } from "./api-version";
+import { MetaApiError, classifyMetaError } from "./client";
 
 /**
  * Instagram API with Instagram Login — fluxo OAuth completo. Endpoints e
@@ -143,9 +144,22 @@ export async function refreshLongLivedToken(currentToken: string): Promise<LongL
   url.searchParams.set("access_token", currentToken);
 
   const res = await fetch(url.toString());
-  if (!res.ok) throw new Error(`Falha ao renovar token: HTTP ${res.status}`);
+  const json = await res.json().catch(() => ({}));
 
-  const json = await res.json();
+  if (!res.ok) {
+    // Lança MetaApiError (mesma classe usada em lib/meta/client.ts) em vez
+    // de um Error genérico — necessário pra lib/meta/token-maintenance.ts
+    // decidir se a falha é transitória (tenta de novo amanhã) ou definitiva
+    // (marca a conta pra reconexão), em vez de assumir sempre o pior caso.
+    const error = json.error as { message?: string; code?: number; error_subcode?: number } | undefined;
+    throw new MetaApiError(error?.message ?? `Falha ao renovar token: HTTP ${res.status}`, {
+      kind: classifyMetaError(res.status, error?.code),
+      code: error?.code,
+      subcode: error?.error_subcode,
+      httpStatus: res.status,
+    });
+  }
+
   return {
     accessToken: json.access_token,
     expiresAt: new Date(Date.now() + json.expires_in * 1000),

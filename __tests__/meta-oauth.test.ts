@@ -6,9 +6,11 @@ import {
   fetchInstagramIdentity,
   needsRefresh,
   normalizePermissions,
+  refreshLongLivedToken,
   subscribeAccountToWebhooks,
   verifyOAuthState,
 } from "@/lib/meta/oauth";
+import { MetaApiError } from "@/lib/meta/client";
 
 const config = {
   instagramAppId: "1578661687080525",
@@ -187,6 +189,45 @@ describe("fetchInstagramIdentity", () => {
   it("lança erro se a Graph API responder com HTTP não-ok", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 401 }));
     await expect(fetchInstagramIdentity("token-abc")).rejects.toThrow(/401/);
+  });
+});
+
+describe("refreshLongLivedToken", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("sucesso: devolve o novo token e a expiração calculada", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true, json: async () => ({ access_token: "novo-token", expires_in: 5184000 }) })
+    );
+    const result = await refreshLongLivedToken("token-antigo");
+    expect(result.accessToken).toBe("novo-token");
+    expect(result.expiresAt.getTime()).toBeGreaterThan(Date.now());
+  });
+
+  // Regressão pro job de manutenção (lib/meta/token-maintenance.ts): sem
+  // lançar MetaApiError com `kind`/`code`, o job não teria como decidir se a
+  // falha é transitória ou definitiva sem assumir o pior caso sempre.
+  it("falha: lança MetaApiError (não um Error genérico) com kind/code da resposta da Meta", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 401,
+        json: async () => ({ error: { message: "token expirado", code: 190 } }),
+      })
+    );
+    await expect(refreshLongLivedToken("token-invalido")).rejects.toMatchObject({
+      name: "MetaApiError",
+      kind: "NON_RETRYABLE",
+      code: 190,
+    });
+  });
+
+  it("falha sem corpo JSON de erro (ex: 500 puro) ainda lança MetaApiError classificado por HTTP status", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 503, json: async () => ({}) }));
+    await expect(refreshLongLivedToken("token-x")).rejects.toBeInstanceOf(MetaApiError);
+    await expect(refreshLongLivedToken("token-x")).rejects.toMatchObject({ kind: "RETRYABLE" });
   });
 });
 

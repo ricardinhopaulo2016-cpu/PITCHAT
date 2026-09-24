@@ -25,6 +25,14 @@ const STATUS_LABEL: Record<string, string> = {
   error: "Erro na conexão",
 };
 
+// status_detail vindo do job de refresh automático de token (ver
+// app/api/cron/refresh-meta-tokens/route.ts) — nunca mostrar o valor cru
+// (ex: "reauth_required") pro usuário final.
+const STATUS_DETAIL_LABEL: Record<string, string> = {
+  reauth_required: "Reconecte a conta — a Meta invalidou o token de acesso.",
+  refresh_non_retryable_failure: "Reconecte a conta — não foi possível renovar o token automaticamente.",
+};
+
 const STATUS_COLOR: Record<string, string> = {
   connected: "var(--success)",
   pending: "var(--text-muted)",
@@ -110,7 +118,11 @@ export default async function SocialAccountsPage({
                           {STATUS_LABEL[account.status] ?? account.status}
                           {expiringSoon && " · token expira em breve"}
                         </p>
-                      ) : (
+                      ) : null}
+                      {account?.status_detail && STATUS_DETAIL_LABEL[account.status_detail] && (
+                        <p className="mt-0.5 text-xs text-warning">{STATUS_DETAIL_LABEL[account.status_detail]}</p>
+                      )}
+                      {!account && (
                         <p className="mt-1 text-xs text-text-muted">Nenhuma conta conectada</p>
                       )}
                       {account?.status === "connected" && activeCount > 0 && (
