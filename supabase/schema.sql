@@ -136,8 +136,6 @@ create table if not exists comments (
   parent_comment_id text,
   text text,
   raw_payload jsonb not null default '{}'::jsonb,
-  automation_processed_at timestamptz,
-  matched_automation_id uuid,
   created_at timestamptz not null default now(),
   unique (social_account_id, external_comment_id)
 );
