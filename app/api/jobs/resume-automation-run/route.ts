@@ -91,18 +91,31 @@ export async function POST(request: Request) {
     // 'failed' — não é uma falha, é uma pausa deliberada) e registra
     // explicitamente por quê, nunca silencioso.
     if (conversation.automation_enabled === false) {
-      await admin.from("automation_run_steps").insert({
-        automation_run_id: run.id,
-        node_id: run.cursor_node_id ?? "unknown",
-        node_type: waitingReason === "retry" ? "RETRY_RESUME" : "DELAY_RESUME",
-        status: "skipped",
-        error: { message: "Conversa em human takeover — resume não avançou." },
-        completed_at: new Date().toISOString(),
-      });
-      await admin
-        .from("automation_runs")
-        .update({ status: "waiting", waiting_reason: waitingReason, updated_at: new Date().toISOString() })
-        .eq("id", run.id);
+      // As 3 escritas não dependem uma da outra — todas só precisam de
+      // `run`/`waitingReason`, já resolvidos. audit_logs aqui é observabilidade
+      // pura (Master Sync Adendo 02 §3): não muda a run nem o retorno da
+      // request, só deixa visível quando isso acontecer de verdade.
+      await Promise.all([
+        admin.from("automation_run_steps").insert({
+          automation_run_id: run.id,
+          node_id: run.cursor_node_id ?? "unknown",
+          node_type: waitingReason === "retry" ? "RETRY_RESUME" : "DELAY_RESUME",
+          status: "skipped",
+          error: { message: "Conversa em human takeover — resume não avançou." },
+          completed_at: new Date().toISOString(),
+        }),
+        admin
+          .from("automation_runs")
+          .update({ status: "waiting", waiting_reason: waitingReason, updated_at: new Date().toISOString() })
+          .eq("id", run.id),
+        admin.from("audit_logs").insert({
+          workspace_id: run.workspace_id,
+          action: "automation.yielded_to_human",
+          entity_type: "automation_run",
+          entity_id: run.id,
+          after: { waiting_reason: waitingReason, conversation_id: run.conversation_id },
+        }),
+      ]);
       return NextResponse.json({ ok: true, skipped: "AUTOMATION_DISABLED_HUMAN_TAKEOVER" });
     }
 
