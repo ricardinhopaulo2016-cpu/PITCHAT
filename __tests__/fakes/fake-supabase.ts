@@ -64,13 +64,25 @@ export function createFakeSupabase() {
         const result = await api.maybeSingle();
         return result.data ? result : { data: null, error: new Error("not found") };
       },
-      then(resolve: (v: { data: unknown; error: null }) => void) {
+      then(resolve: (v: { data: unknown; error: null; count?: number }) => void) {
         if (pendingUpdate) {
           tables[table] = tables[table].map((r) =>
             matches(r, filters) ? { ...r, ...pendingUpdate } : r
           );
+          resolve({ data: pendingInsert, error: null });
+          return;
         }
-        resolve({ data: pendingInsert, error: null });
+        if (pendingInsert) {
+          resolve({ data: pendingInsert, error: null });
+          return;
+        }
+        // Leitura simples (sem insert/update pendente) — ex: `.select("id", {
+        // count: "exact", head: true }).eq(...).eq(...)` usado por
+        // lib/automation/engine.ts pra contar tentativas de retry. `count`
+        // sempre presente (o fake não distingue head:true/false — não
+        // precisa, quem chama só olha o campo que interessa).
+        const matched = tables[table].filter((r) => matches(r, filters));
+        resolve({ data: matched, error: null, count: matched.length });
       },
     };
     return api;

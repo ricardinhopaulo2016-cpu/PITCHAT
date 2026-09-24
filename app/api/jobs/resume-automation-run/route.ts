@@ -9,7 +9,14 @@ import type { ExecutionContext } from "@/lib/automation/node-handlers";
 
 export const runtime = "nodejs";
 
-/** Callback do QStash pro node DELAY — só o QStash chama isso (assinatura verificada). */
+/**
+ * Callback do QStash pro node DELAY **e** pro retry de erro RETRYABLE (ver
+ * lib/automation/retry-policy.ts) — só o QStash chama isso (assinatura
+ * verificada). Os dois pausam a run do mesmo jeito (`status=waiting`,
+ * `cursor_node_id`), só o `waiting_reason` e o node de retomada diferem:
+ * DELAY segue pro PRÓXIMO node (o delay já "aconteceu"); retry reexecuta o
+ * MESMO node que falhou (é ele que precisa rodar de novo).
+ */
 export async function POST(request: Request) {
   const admin = getSupabaseAdminClient();
   if (!admin) return NextResponse.json({ error: "SUPABASE_NOT_CONFIGURED" }, { status: 503 });
@@ -33,8 +40,15 @@ export async function POST(request: Request) {
   if (!automationRunId) return NextResponse.json({ error: "INVALID_BODY" }, { status: 400 });
 
   // Reivindica atomicamente — se dois callbacks chegarem (retry do QStash),
-  // só um consegue avançar (seção 24/25 do briefing).
-  const run = await claimWaitingRun(admin, automationRunId, "delay");
+  // só um consegue avançar (seção 24/25 do briefing). Tenta os dois motivos
+  // de espera possíveis pra este endpoint; qual bateu decide o node de
+  // retomada logo abaixo.
+  let run = await claimWaitingRun(admin, automationRunId, "delay");
+  let waitingReason: "delay" | "retry" = "delay";
+  if (!run) {
+    run = await claimWaitingRun(admin, automationRunId, "retry");
+    waitingReason = "retry";
+  }
   if (!run) {
     return NextResponse.json({ ok: true, alreadyResumedOrNotFound: true });
   }
@@ -81,8 +95,17 @@ export async function POST(request: Request) {
     }
 
     const graph = version.graph as Graph;
-    const delayNodeId = run.cursor_node_id!;
-    const nextEdge = graph.edges.find((e) => e.from === delayNodeId);
+    const cursorNodeId = run.cursor_node_id!;
+    // DELAY: o delay já "aconteceu", segue pro PRÓXIMO node. Retry: reexecuta
+    // o MESMO node que falhou (é ele que precisa rodar de novo).
+    const nextEdge = graph.edges.find((e) => e.from === cursorNodeId);
+    const startNodeId = waitingReason === "retry" ? cursorNodeId : (nextEdge?.to ?? cursorNodeId);
+
+    // PUBLIC_REPLY/PRIVATE_REPLY (retry) precisam do comment_id original —
+    // não fica no `context` do run, mas `trigger_ref_id` já guarda o
+    // external_comment_id desde a criação da run (ver lib/automation/
+    // ingest.ts::createRun) quando trigger_source é 'comment'.
+    const commentId = run.trigger_source === "comment" ? (run.trigger_ref_id ?? null) : null;
 
     const ctx: ExecutionContext = {
       variables: run.context,
@@ -100,9 +123,9 @@ export async function POST(request: Request) {
         accessToken: decryptToken(socialAccount.access_token_encrypted),
       },
       recipientId: (conversation.contact as unknown as { platform_user_id: string }).platform_user_id,
-      commentId: null,
+      commentId,
       ctx,
-      startNodeId: nextEdge?.to ?? delayNodeId,
+      startNodeId,
     });
 
     return NextResponse.json({ ok: true });
@@ -111,7 +134,7 @@ export async function POST(request: Request) {
     await admin.from("automation_run_steps").insert({
       automation_run_id: run.id,
       node_id: run.cursor_node_id ?? "unknown",
-      node_type: "DELAY_RESUME",
+      node_type: waitingReason === "retry" ? "RETRY_RESUME" : "DELAY_RESUME",
       status: "failed",
       error: { message },
       completed_at: new Date().toISOString(),

@@ -1,8 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { findNode, nextNode, type Graph } from "./graph";
 import { evaluateNode, type ExecutionContext } from "./node-handlers";
-import type { MetaClient } from "@/lib/meta/client";
+import { MetaApiError, type MetaClient } from "@/lib/meta/client";
 import { checkUrlAllowed } from "./ssrf-guard";
+import { getRetryBackoffMinutes } from "./retry-policy";
 import * as qstash from "@/lib/qstash";
 
 const MAX_STEPS_PER_INVOCATION = 50; // trava de segurança contra loop infinito num grafo mal configurado
@@ -22,6 +23,12 @@ export type AutomationRunRow = {
   cursor_node_id: string | null;
   waiting_reason: string | null;
   context: Record<string, unknown>;
+  // Presentes na linha real (claimWaitingRun faz `.select()` sem args, que
+  // já traz todas as colunas) — tipados aqui só pra quem precisa reconstruir
+  // o commentId ao retomar um retry num node PUBLIC_REPLY/PRIVATE_REPLY (ver
+  // app/api/jobs/resume-automation-run/route.ts).
+  trigger_source?: string;
+  trigger_ref_id?: string | null;
 };
 
 export type AdvanceParams = {
@@ -63,7 +70,8 @@ async function logStep(
   status: "succeeded" | "failed" | "skipped",
   input: unknown,
   output: unknown,
-  error?: unknown
+  error?: unknown,
+  attempt = 1
 ) {
   await admin.from("automation_run_steps").insert({
     automation_run_id: runId,
@@ -73,8 +81,20 @@ async function logStep(
     input: input as never,
     output: output as never,
     error: error ? { message: error instanceof Error ? error.message : String(error) } : null,
+    attempt,
     completed_at: new Date().toISOString(),
   });
+}
+
+/** Quantas vezes ESTE node já falhou nesta run — base pro cálculo de backoff do retry. */
+async function countFailedAttempts(admin: SupabaseClient, runId: string, nodeId: string): Promise<number> {
+  const { count } = await admin
+    .from("automation_run_steps")
+    .select("id", { count: "exact", head: true })
+    .eq("automation_run_id", runId)
+    .eq("node_id", nodeId)
+    .eq("status", "failed");
+  return count ?? 0;
 }
 
 async function updateRun(
@@ -320,6 +340,38 @@ export async function advanceRun(
         }
       }
     } catch (err) {
+      // Erro RETRYABLE (rate limit, 5xx da Meta — ver classifyMetaError):
+      // reagenda o MESMO node via QStash em vez de falhar de vez. NON_RETRYABLE
+      // (token inválido, requisição malformada) nunca passa por aqui — cai
+      // direto pro failed definitivo abaixo, retry não ajudaria.
+      if (err instanceof MetaApiError && err.kind === "RETRYABLE") {
+        const priorFailures = await countFailedAttempts(admin, run.id, currentNode.id);
+        const attemptNumber = priorFailures + 1; // 1 = esta primeira falha, 2 = segunda, ...
+        const backoffMinutes = getRetryBackoffMinutes(attemptNumber);
+
+        if (backoffMinutes !== null) {
+          await logStep(admin, run.id, currentNode.id, currentNode.type, "failed", null, null, err, attemptNumber);
+          const scheduled = await qstash.scheduleAutomationResume({
+            automationRunId: run.id,
+            minutes: backoffMinutes,
+            deduplicationId: `retry:${run.id}:${currentNode.id}:${attemptNumber}`,
+          });
+          if (scheduled.ok) {
+            await updateRun(admin, run.id, {
+              status: "waiting",
+              waiting_reason: "retry",
+              cursor_node_id: currentNode.id,
+              context: ctx.variables,
+            });
+            return; // pausa — só retoma quando o callback do QStash chegar
+          }
+          // Não conseguiu nem agendar o retry (QStash não configurado, etc)
+          // — cai pro failed definitivo abaixo, nunca finge que vai tentar
+          // de novo sozinho.
+        }
+        // Esgotou MAX_RETRY_ATTEMPTS — falha de vez, nunca retenta pra sempre.
+      }
+
       await logStep(admin, run.id, currentNode.id, currentNode.type, "failed", null, null, err);
       await updateRun(admin, run.id, { status: "failed" });
       return;

@@ -1,9 +1,17 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { advanceRun, buildQuickReplyPayload, parseQuickReplyPayload } from "@/lib/automation/engine";
-import type { MetaClient } from "@/lib/meta/client";
+import { MetaApiError, type MetaClient } from "@/lib/meta/client";
 import type { Graph } from "@/lib/automation/graph";
 import type { ExecutionContext } from "@/lib/automation/node-handlers";
 import { createFakeSupabase } from "./fakes/fake-supabase";
+import * as qstash from "@/lib/qstash";
+
+// Default: replica o comportamento real de scheduleAutomationResume sem
+// QSTASH_TOKEN configurado (ok:false) — o teste de retry bem-sucedido abaixo
+// sobrescreve com mockResolvedValueOnce só na hora que precisa.
+vi.mock("@/lib/qstash", () => ({
+  scheduleAutomationResume: vi.fn().mockResolvedValue({ ok: false, reason: "QSTASH_NOT_CONFIGURED" }),
+}));
 
 const socialAccount = { id: "sa1", externalAccountId: "ig-account-1", accessToken: "token-1" };
 
@@ -310,6 +318,113 @@ describe("advanceRun", () => {
     expect(fake.__tables.automation_runs[0].status).toBe("failed");
     const lastStep = fake.__tables.automation_run_steps.at(-1);
     expect(lastStep?.status).toBe("failed");
+  });
+
+  describe("retry de erro RETRYABLE (P1, auditoria 24/09/2026)", () => {
+    afterEach(() => vi.clearAllMocks());
+
+    it("MetaApiError RETRYABLE pausa a run (waiting/retry) e agenda o MESMO node via QStash", async () => {
+      vi.mocked(qstash.scheduleAutomationResume).mockResolvedValueOnce({ ok: true, messageId: "qstash-msg-1" });
+
+      const graph: Graph = {
+        nodes: [
+          { id: "trigger", type: "TRIGGER_COMMENT", data: {} },
+          { id: "pub", type: "PUBLIC_REPLY", data: { variants: ["Te mandei no direct!"] } },
+        ],
+        edges: [{ from: "trigger", to: "pub" }],
+      };
+      const fake = createFakeSupabase();
+      seedRun(fake);
+      const rateLimited = new MetaApiError("rate limited", { kind: "RETRYABLE", code: 4, httpStatus: 400 });
+      const meta = fakeMeta({ sendPublicReply: vi.fn().mockRejectedValue(rateLimited) });
+
+      await advanceRun(fake as never, meta, {
+        run: fake.__tables.automation_runs[0] as never,
+        graph,
+        socialAccount,
+        recipientId: "user-igsid-1",
+        commentId: "comment-1",
+        ctx: baseCtx(),
+      });
+
+      expect(qstash.scheduleAutomationResume).toHaveBeenCalledWith({
+        automationRunId: "run1",
+        minutes: 1, // primeira tentativa de retry — ver lib/automation/retry-policy.ts
+        deduplicationId: "retry:run1:pub:1",
+      });
+      const run = fake.__tables.automation_runs[0];
+      expect(run.status).toBe("waiting");
+      expect(run.waiting_reason).toBe("retry");
+      expect(run.cursor_node_id).toBe("pub");
+      const lastStep = fake.__tables.automation_run_steps.at(-1) as { status: string; attempt: number };
+      expect(lastStep.status).toBe("failed");
+      expect(lastStep.attempt).toBe(1);
+    });
+
+    it("depois de MAX_RETRY_ATTEMPTS falhas, desiste de vez — nunca retenta pra sempre", async () => {
+      const graph: Graph = {
+        nodes: [
+          { id: "trigger", type: "TRIGGER_COMMENT", data: {} },
+          { id: "pub", type: "PUBLIC_REPLY", data: { variants: ["Te mandei no direct!"] } },
+        ],
+        edges: [{ from: "trigger", to: "pub" }],
+      };
+      const fake = createFakeSupabase();
+      seedRun(fake);
+      // Simula 3 tentativas já falhadas nesse mesmo node — a próxima (4ª)
+      // deve esgotar MAX_RETRY_ATTEMPTS e falhar de vez.
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        fake.__tables.automation_run_steps.push({
+          automation_run_id: "run1",
+          node_id: "pub",
+          node_type: "PUBLIC_REPLY",
+          status: "failed",
+          attempt,
+        });
+      }
+      const rateLimited = new MetaApiError("rate limited", { kind: "RETRYABLE", code: 4, httpStatus: 400 });
+      const meta = fakeMeta({ sendPublicReply: vi.fn().mockRejectedValue(rateLimited) });
+
+      await advanceRun(fake as never, meta, {
+        run: fake.__tables.automation_runs[0] as never,
+        graph,
+        socialAccount,
+        recipientId: "user-igsid-1",
+        commentId: "comment-1",
+        ctx: baseCtx(),
+      });
+
+      expect(qstash.scheduleAutomationResume).not.toHaveBeenCalled();
+      const run = fake.__tables.automation_runs[0];
+      expect(run.status).toBe("failed");
+      expect(run.waiting_reason).toBeNull(); // nunca ficou 'waiting' — desistiu de vez
+    });
+
+    it("erro NON_RETRYABLE nunca tenta reagendar — falha de vez na primeira falha", async () => {
+      const graph: Graph = {
+        nodes: [
+          { id: "trigger", type: "TRIGGER_COMMENT", data: {} },
+          { id: "pub", type: "PUBLIC_REPLY", data: { variants: ["Te mandei no direct!"] } },
+        ],
+        edges: [{ from: "trigger", to: "pub" }],
+      };
+      const fake = createFakeSupabase();
+      seedRun(fake);
+      const authError = new MetaApiError("token inválido", { kind: "NON_RETRYABLE", code: 190, httpStatus: 401 });
+      const meta = fakeMeta({ sendPublicReply: vi.fn().mockRejectedValue(authError) });
+
+      await advanceRun(fake as never, meta, {
+        run: fake.__tables.automation_runs[0] as never,
+        graph,
+        socialAccount,
+        recipientId: "user-igsid-1",
+        commentId: "comment-1",
+        ctx: baseCtx(),
+      });
+
+      expect(qstash.scheduleAutomationResume).not.toHaveBeenCalled();
+      expect(fake.__tables.automation_runs[0].status).toBe("failed");
+    });
   });
 
   it("HTTP_REQUEST bloqueia URL de rede privada e falha o run, sem chamar fetch de verdade", async () => {
