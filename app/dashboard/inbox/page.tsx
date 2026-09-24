@@ -60,34 +60,38 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
   const admin = getSupabaseAdminClient();
   if (!admin) redirect("/setup");
 
-  const conversations = await listConversations(admin, auth.workspace.id);
+  // listConversations (coluna 1) e loadConversationForWorkspace (a conversa
+  // selecionada, se houver) não dependem uma da outra — só de
+  // auth.workspace.id/conversationId, já resolvidos. Paraleliza (reauditoria
+  // HEAD 24/09/2026).
+  const [conversations, selected] = await Promise.all([
+    listConversations(admin, auth.workspace.id),
+    conversationId ? loadConversationForWorkspace(admin, conversationId, auth.workspace.id) : Promise.resolve(null),
+  ]);
 
-  let selected: Awaited<ReturnType<typeof loadConversationForWorkspace>> = null;
   let timeline: Awaited<ReturnType<typeof loadConversationTimeline>>["timeline"] = [];
   let automationRuns: Awaited<ReturnType<typeof loadConversationTimeline>>["automationRuns"] = [];
   let contact: { username: string | null; platform: string; first_seen_at: string; last_seen_at: string } | null = null;
   let tags: string[] = [];
 
-  if (conversationId) {
-    selected = await loadConversationForWorkspace(admin, conversationId, auth.workspace.id);
-    if (selected) {
-      // Marca como lida ao abrir — a própria visita já é a ação de "ler".
-      await admin.from("conversations").update({ last_read_at: new Date().toISOString() }).eq("id", selected.id);
-
-      const [timelineResult, { data: contactRow }, { data: contactTags }] = await Promise.all([
-        loadConversationTimeline(admin, {
-          conversationId: selected.id,
-          contactId: selected.contact_id,
-          socialAccountId: selected.social_account_id,
-        }),
-        admin.from("contacts").select("username, platform, first_seen_at, last_seen_at").eq("id", selected.contact_id).maybeSingle(),
-        admin.from("contact_tags").select("tags(name)").eq("contact_id", selected.contact_id),
-      ]);
-      timeline = timelineResult.timeline;
-      automationRuns = timelineResult.automationRuns;
-      contact = contactRow;
-      tags = (contactTags ?? []).map((t) => (t.tags as unknown as { name: string } | null)?.name).filter((n): n is string => !!n);
-    }
+  if (selected) {
+    // Marcar como lida, buscar timeline, contato e tags — as 4 operações só
+    // dependem de `selected` (já resolvido acima), nenhuma depende do
+    // resultado das outras. Paraleliza (reauditoria HEAD 24/09/2026).
+    const [, timelineResult, { data: contactRow }, { data: contactTags }] = await Promise.all([
+      admin.from("conversations").update({ last_read_at: new Date().toISOString() }).eq("id", selected.id),
+      loadConversationTimeline(admin, {
+        conversationId: selected.id,
+        contactId: selected.contact_id,
+        socialAccountId: selected.social_account_id,
+      }),
+      admin.from("contacts").select("username, platform, first_seen_at, last_seen_at").eq("id", selected.contact_id).maybeSingle(),
+      admin.from("contact_tags").select("tags(name)").eq("contact_id", selected.contact_id),
+    ]);
+    timeline = timelineResult.timeline;
+    automationRuns = timelineResult.automationRuns;
+    contact = contactRow;
+    tags = (contactTags ?? []).map((t) => (t.tags as unknown as { name: string } | null)?.name).filter((n): n is string => !!n);
   }
 
   return (
