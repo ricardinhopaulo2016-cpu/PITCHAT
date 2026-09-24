@@ -104,6 +104,18 @@ export type TimelineEntry = {
   text: string | null;
   /** Só presente em entradas de comentário (kind=comment) — PK interna de `comments`, usada por "Responder" (POST /api/comments/[id]/reply). Nunca o external_comment_id da Meta. */
   commentId?: string;
+  /** "comment" (veio de `comments`) ou "dm" (veio de `messages`) — só contexto visual pra distinguir "Comentário" de "Mensagem" na UI, nunca usado pra lógica. */
+  channel: "comment" | "dm";
+  /**
+   * `comments.external_media_id` (o post da Meta onde o comentário
+   * aconteceu) — achado real 24/09/2026: o mesmo contato pode comentar a
+   * mesma frase em posts diferentes, e como a timeline agrega por
+   * contact_id (não por media), as duas entradas pareciam duplicata sem
+   * esse contexto. Não temos permalink/thumbnail de post persistido em
+   * lugar nenhum do schema hoje — mostrar isso exigiria infra nova (não é
+   * o pedido desta rodada), então por ora é só o ID truncado.
+   */
+  externalMediaId?: string | null;
 };
 
 export type AutomationRunSummary = {
@@ -129,7 +141,7 @@ export async function loadConversationTimeline(
   const [{ data: comments }, { data: messages }, { data: runs }] = await Promise.all([
     admin
       .from("comments")
-      .select("id, text, created_at")
+      .select("id, text, created_at, external_media_id")
       .eq("social_account_id", params.socialAccountId)
       .eq("contact_id", params.contactId)
       .order("created_at", { ascending: true })
@@ -168,13 +180,15 @@ export async function loadConversationTimeline(
       actor: "USER",
       text: c.text as string | null,
       commentId: c.id as string,
+      channel: "comment",
+      externalMediaId: (c.external_media_id as string | null) ?? null,
     });
   }
 
   for (const s of publicReplySteps ?? []) {
     if (s.status !== "succeeded") continue;
     const output = s.output as { text?: string } | null;
-    timeline.push({ id: `step-${s.id}`, at: s.started_at as string, actor: "AUTOMATION", text: output?.text ?? null });
+    timeline.push({ id: `step-${s.id}`, at: s.started_at as string, actor: "AUTOMATION", text: output?.text ?? null, channel: "comment" });
   }
 
   for (const m of messages ?? []) {
@@ -184,6 +198,7 @@ export async function loadConversationTimeline(
       at: (m.sent_at ?? m.received_at ?? m.created_at) as string,
       actor,
       text: m.text as string | null,
+      channel: "dm",
     });
   }
 

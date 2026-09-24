@@ -29,6 +29,21 @@ const ACTOR_LABEL: Record<"USER" | "AUTOMATION" | "HUMAN", { label: string; mark
   HUMAN: { label: "Você", marker: "logic" },
 };
 
+const CHANNEL_LABEL: Record<"comment" | "dm", string> = { comment: "Comentário", dm: "Mensagem" };
+
+/**
+ * `180949…41213` — achado real 24/09/2026: o mesmo contato pode comentar a
+ * mesma frase em dois posts diferentes, e a timeline (que agrega por
+ * contact_id, não por media) mostrava os dois lado a lado sem dizer de qual
+ * post vinha cada um, parecendo duplicata. Sem permalink/thumbnail
+ * persistido em lugar nenhum do schema hoje — não dá pra linkar pro post
+ * real ainda, só mostrar o ID truncado como contexto técnico.
+ */
+function truncateMediaId(id: string): string {
+  if (id.length <= 14) return id;
+  return `${id.slice(0, 6)}…${id.slice(-5)}`;
+}
+
 const RUN_STATUS_COLOR: Record<string, string> = {
   running: "var(--text-secondary)",
   waiting: "var(--warning)",
@@ -144,8 +159,14 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
                         <li key={entry.id} className={`flex flex-col gap-1 ${isUser ? "items-start" : "items-end"}`}>
                           <span className="flex items-center gap-1.5 text-[11px] text-text-muted">
                             <SignalMarker type={cfg.marker} width={9} height={9} />
-                            {cfg.label} · {timeAgo(entry.at)}
+                            {cfg.label}
+                            {isUser && ` · ${CHANNEL_LABEL[entry.channel]}`} · {timeAgo(entry.at)}
                           </span>
+                          {entry.channel === "comment" && entry.externalMediaId && (
+                            <span className="text-[11px] text-text-muted">
+                              Comentário em post · <span className="font-mono">{truncateMediaId(entry.externalMediaId)}</span>
+                            </span>
+                          )}
                           <p
                             className={`max-w-[85%] whitespace-pre-wrap rounded-[var(--radius-panel-sm)] border px-3 py-2 text-sm ${
                               isUser ? "border-border-subtle bg-surface-1 text-text" : "border-signal/30 bg-signal-soft text-text"
