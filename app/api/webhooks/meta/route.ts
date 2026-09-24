@@ -60,7 +60,20 @@ export async function POST(request: Request) {
         event_type: "invalid_signature",
         payload: { rawBodyPreview: rawBody.slice(0, 2000) },
         status: "failed",
-        last_error: { reason: "INVALID_SIGNATURE", signatureHeaderPresent: !!signature },
+        // `signature` (o header recebido) NÃO é segredo — é um HMAC já
+        // calculado pela Meta com o body, público por natureza (é isso que
+        // vai na URL/header de toda entrega). Gravado só pra diagnóstico:
+        // permite recomputar HMAC(rawBody, META_APP_SECRET) offline e
+        // comparar byte a byte, sem precisar logar o secret em lugar
+        // nenhum. Ver docs/PITCHAT_META_INTEGRATION.md §3 — achado real
+        // 23-24/09/2026, assinatura seguindo inválida após trocar o secret
+        // mais de uma vez, sem forma de confirmar SE o valor configurado
+        // bate com o que a Meta realmente usou.
+        last_error: {
+          reason: "INVALID_SIGNATURE",
+          signatureHeaderPresent: !!signature,
+          receivedSignatureHeader: signature,
+        },
       },
       { onConflict: "provider,external_event_id", ignoreDuplicates: true }
     );
