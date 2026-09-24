@@ -4,6 +4,7 @@ import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { normalizeMetaWebhookPayload, type RawMetaWebhookPayload } from "@/lib/meta/events";
 import { ingestInstagramComment, ingestInstagramQuickReply } from "@/lib/automation/ingest";
 import { realMetaClient } from "@/lib/meta/client";
+import { decideWebhookEventOutcome, type EventMatchResult } from "@/lib/meta/webhook-outcome";
 
 export const runtime = "nodejs";
 
@@ -57,6 +58,7 @@ export async function POST(request: Request) {
 
   try {
     const events = normalizeMetaWebhookPayload(webhookEvent.payload as RawMetaWebhookPayload);
+    const matchResults: EventMatchResult[] = [];
 
     for (const event of events) {
       const { data: socialAccount } = await admin
@@ -66,7 +68,18 @@ export async function POST(request: Request) {
         .eq("external_account_id", event.externalAccountId)
         .maybeSingle();
 
-      if (!socialAccount) continue; // conta não conectada no PITCHAT — nada a fazer
+      matchResults.push({
+        matched: !!socialAccount,
+        eventType: event.type,
+        externalAccountId: event.externalAccountId,
+      });
+
+      // Conta não encontrada: NUNCA silenciar (achado real 24/09/2026— ver
+      // lib/meta/webhook-outcome.ts). Continua processando os OUTROS eventos
+      // do mesmo payload normalmente (upsert idempotente por external_id
+      // torna isso seguro), mas o webhook_event inteiro termina `failed`
+      // logo abaixo, nunca `processed` como se nada tivesse faltado.
+      if (!socialAccount) continue;
 
       if (event.type === "InstagramCommentReceived") {
         await ingestInstagramComment(admin, realMetaClient, socialAccount, event);
@@ -77,12 +90,17 @@ export async function POST(request: Request) {
       // flow no V1 — trigger suportado é só comentário, por enquanto.
     }
 
+    const outcome = decideWebhookEventOutcome(matchResults);
     await admin
       .from("webhook_events")
-      .update({ status: "processed", processed_at: new Date().toISOString() })
+      .update({
+        status: outcome.status,
+        processed_at: outcome.status === "processed" ? new Date().toISOString() : null,
+        last_error: outcome.lastError,
+      })
       .eq("id", webhookEventId);
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: outcome.status === "processed", outcome: outcome.status });
   } catch (err) {
     await admin
       .from("webhook_events")
