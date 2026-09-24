@@ -178,7 +178,7 @@ Cada execução gera `automation_runs` + `automation_run_steps` (uma linha por s
 
 | Risco | Impacto | Mitigação |
 |---|---|---|
-| **Webhook exige app em Live + Advanced Access + Business Verification — mesmo pra conta própria/tester** (correção 10/09/2026, achado testando E2E real: app-level e account-level subscription confirmadas ativas via API, payload assinado testado, mesmo assim ZERO entregas depois de 3 comentários reais; doc oficial confirma literalmente "Apps must be set to Live... to receive webhook notifications" + tabela de requisitos exige Advanced Access/Business Verification pra "Business Login for Instagram") | **Bloqueia o gatilho automático via comentário real até o usuário completar Business Verification + App Review + trocar o app pra Live** — não é um bug de código, é um portão externo da Meta | Checklist exato em `PITCHAT_META_INTEGRATION.md` §1.8-9, ação manual do usuário (documentos da empresa + submissão de review). OAuth/Send API/Private Reply continuam testáveis manualmente enquanto isso |
+| ~~Webhook exige app em Live + Advanced Access + Business Verification~~ — **RESOLVIDO (24/09/2026)**: app em Live + conta própria (Standard Access) já bastou pra entrega real funcionar; Advanced Access/Business Verification só voltam a importar pra gerenciar contas de terceiros (linha abaixo) | ~~Bloqueava o gatilho automático~~ — nenhum, confirmado com tráfego real | N/A |
 | Advanced Access + Business Verification também exigidos separadamente para gerenciar contas de terceiros (modelo Tech Provider) | Bloqueia onboarding de clientes externos — mas como webhook já exige isso pra QUALQUER conta (ver risco acima), essa distinção deixou de importar na prática | N/A — vai ser resolvido junto com o risco acima |
 | Estrutura exata do webhook `message_reactions` não vem com JSON literal na doc oficial (só descrição textual) | Parser pode precisar ajuste após primeiro evento real | Tratar como best-effort, logar payload bruto, ajustar após teste ponta a ponta real |
 | Comportamento pós-expiração do long-lived token (60 dias) não documentado explicitamente | Pode exigir reconexão manual sem aviso claro | `social_accounts.status` já modela `expired`/`error`; health check na UI deve avisar antes de expirar |
@@ -198,18 +198,22 @@ O roadmap anterior (Fase 0–12, com Media Library nas Fases 2–3) está **subs
 - [x] **Fase H** — Conditions + Tags + Fields: node types `CONDITION`/`ADD_TAG`/`REMOVE_TAG`/`SET_CUSTOM_FIELD` implementados
 - [ ] **Fase I** — Inbox + Human Takeover: **não implementado** — sem UI, `messages` sem código de leitura, sem botão pausar/retomar automação
 - [~] **Fase J** — Automation Editor: CRUD completo (`app/api/automations/**`) + editor sequencial V1 (`app/dashboard/automations/**`, `lib/automation/flow-spec.ts`) implementados em 09/09/2026, com o flow de referência "Instagram Comment → DM Test" disponível via botão de seed. Pendente: UI de Contacts (item 31), editor visual (canvas), CONDITION com segundo braço editável (V1 força `false` → END sempre)
-- [ ] **Fase K** — Hardening + teste ponta a ponta real: pendente até existir Meta App configurado; inclui rodar `supabase db dump` pra sincronizar `schema.sql` com as migrations
+- [x] **Fase K** — Hardening + teste ponta a ponta real: **concluída em 24/09/2026**, com tráfego real do Instagram (ver marco abaixo). Ainda pendente dessa fase: rodar `supabase db dump` pra sincronizar `schema.sql` com as migrations; hardening P0 (Fase B do plano de auditoria, em andamento).
 
-> **Reprioridade em 09/09/2026**: Fase K passa a ser a prioridade máxima, à frente de Inbox (I)/Contacts/editor visual — ver `docs/PITCHAT_META_INTEGRATION.md` §0. Nenhum dos quatro fluxos críticos (OAuth, Webhook, Private Reply, Send API) conta como "funcionando" só por ter código+teste mockado — status correto é `IMPLEMENTED / NOT E2E VERIFIED` até rodar contra a API real. Ordem do primeiro teste real (checklist §1 do doc de integração é pré-requisito):
-> 1. Meta App criado e configurado (ação do usuário)
-> 2. OAuth real (conectar 1 Instagram profissional de teste)
-> 3. Webhook/subscription real
-> 4. Comentário real recebido → normalizado → persistido
-> 5. `automation_run` iniciado → `PUBLIC_REPLY` real → `PRIVATE_REPLY` real
-> 6. Interação/mensagem real recebida → run `waiting` correto identificado → flow continua → `SEND_MESSAGE` real
-> 7. `DELAY` real via QStash (se credenciais já existirem) → follow-up real
+> **✅ MARCO — E2E real validado em produção (24/09/2026)**: os 7 passos abaixo, que definiam o critério de "funcionando de verdade" desde 09/09/2026, foram todos confirmados com tráfego real do Instagram (não simulado, não reprocessado manualmente) na conta de teste `@papagaio_milhas`:
+> 1. ✅ Meta App criado, configurado e **Live**
+> 2. ✅ OAuth real conectando o Instagram profissional de teste
+> 3. ✅ Webhook + subscription reais — assinatura validando com `INSTAGRAM_APP_SECRET` (achado real, ver `PITCHAT_META_INTEGRATION.md` §3; **não** é o `META_APP_SECRET` que a doc antiga desta fase presumia)
+> 4. ✅ Comentário real recebido → normalizado → persistido em `webhook_events`/`comments`/`contacts`/`conversations`
+> 5. ✅ `automation_run` iniciado → `PUBLIC_REPLY` real (comentário público visível) → `PRIVATE_REPLY` real (DM confirmada por **read receipt** do destinatário, não só pelo `message_id` retornado)
+> 6. ✅ Clique real em Quick Reply → `messaging_postbacks` → `claimWaitingRun` retomou a **mesma** `automation_run` (nunca criou uma nova) → `SEND_MESSAGE` real com Button Template (`web_url`, sem URL crua em texto)
+> 7. ✅ `DELAY` real de 2 minutos via QStash → callback → retomada → follow-up real → `automation_run.status = completed`
 >
-> Trabalho em Inbox/CRUD/editor visual só avança enquanto o usuário estiver fazendo configuração manual no painel da Meta (não pode virar prioridade maior que fechar esse E2E).
+> Cadeia completa provada numa única run real: `comentário → webhook → QStash → engine → KEYWORD_MATCH → PUBLIC_REPLY → PRIVATE_REPLY (com quick reply anexado, sem bubble duplicada) → clique → resume → Button Template → DELAY → QStash resume → follow-up → END`.
+>
+> Bugs reais encontrados e corrigidos nesse processo (não achados por teste automatizado — só apareceram contra a API real): ID da conta gravado errado no OAuth (app-scoped vs. real), secret errado validando o webhook (`META_APP_SECRET` vs. `INSTAGRAM_APP_SECRET`), e bubble duplicada no Quick Reply (texto repetido em duas mensagens separadas). Detalhes e commits em `PITCHAT_META_INTEGRATION.md`.
+>
+> Com o E2E mínimo fechado, a prioridade agora é hardening P0 (token refresh automático, eliminar falha silenciosa de `social_account` não encontrada, gate de revisão antes de publicar automação) antes de Inbox (I)/Contacts/editor visual.
 
 **Correção de bug encontrada em 09/09/2026**: `lib/meta/events.ts` só reconhecia `messages`/`messaging_postbacks` no formato legado `entry.messaging[]` (Messenger/Facebook Page) — a doc oficial revalidada mostra que o envelope com exemplo confirmado é `entry.changes[].{field,value}` (mesmo formato de `comments`). Corrigido para aceitar os dois formatos; ver `docs/PITCHAT_META_INTEGRATION.md` §3.
 
