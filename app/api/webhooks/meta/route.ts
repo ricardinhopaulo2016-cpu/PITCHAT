@@ -55,9 +55,10 @@ export async function POST(request: Request) {
   if (!verifyMetaWebhookSignature(rawBody, signature, webhookSigningSecret)) {
     // Gap real de observabilidade descoberto durante o primeiro teste E2E
     // (10/09/2026): antes disso, uma assinatura inválida só retornava 401 e
-    // NUNCA gravava nada. `receivedSignatureHeader` (o HMAC que a Meta
-    // mandou, não é segredo) foi o que permitiu confirmar o bug do
-    // parágrafo acima comparando offline contra as duas chaves.
+    // NUNCA gravava nada. Um prefixo curto do HMAC recebido (nunca o valor
+    // completo — auditoria de observabilidade 24/09/2026) já basta pra
+    // diferenciar "chegou algo plausível" de "chegou lixo", sem guardar
+    // material de assinatura completo em lugar nenhum.
     const externalEventId = createHash("sha256").update(rawBody).digest("hex");
     await admin.from("webhook_events").upsert(
       {
@@ -69,7 +70,7 @@ export async function POST(request: Request) {
         last_error: {
           reason: "INVALID_SIGNATURE",
           signatureHeaderPresent: !!signature,
-          receivedSignatureHeader: signature,
+          receivedSignaturePrefix: signature ? signature.slice(0, 22) : null, // "sha256=" + 15 chars, nunca o valor completo
         },
       },
       { onConflict: "provider,external_event_id", ignoreDuplicates: true }
