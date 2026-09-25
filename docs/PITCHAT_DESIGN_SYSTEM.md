@@ -116,7 +116,20 @@ Ver `docs/PITCHAT_BRAND.md` §Ícones para a lógica de cada ícone proprietári
 
 ## 11. Componentes
 
-`components/icons/pitchat/` (PitchatMark, OverviewIcon, FlowIcon, ChannelIcon, InboxSignalIcon, ContactThreadIcon, SignalMarker) · `components/ui/` (Button, Input, Textarea, Select, StatusIndicator, EmptyState, Toast) · `components/app-shell/` (AppShell, Sidebar, MobileSidebar, PageHeader) · `components/automations/` (AutomationRegistry, AutomationRow) · `components/dashboard/` (StatStrip, ActivityRail).
+`components/icons/pitchat/` (PitchatMark, OverviewIcon, FlowIcon, ChannelIcon, InboxSignalIcon, ContactThreadIcon, SignalMarker) · `components/ui/` (Button, Input, Textarea, Select, StatusIndicator, EmptyState, Toast, Tooltip) · `components/app-shell/` (AppShell, Rail, TopBar, ChannelSwitcher, MobileSidebar, PageHeader) · `components/automations/` (AutomationRegistry, AutomationRow) · `components/dashboard/` (StatStrip, ActivityRail).
+
+### 11.1 Thin Rail — Fase B / Signal Desk V2 (25/09/2026)
+
+`Sidebar` (216px, com labels) foi substituída por `Rail` (64px, só ícone) —
+identidade central continua nos SVGs próprios do PITCHAT, nunca Lucide/
+Phosphor. Label vira `Tooltip` (novo, `@radix-ui/react-tooltip`) + `aria-label`
+— nunca só um dos dois. Workspace/email/som/logout migraram pro mesmo
+`DropdownMenu` de antes, agora aberto a partir do círculo de iniciais no
+rodapé do rail. `TopBar` é nova (persistente, md+, nunca substitui o
+`PageHeader` de cada página) e hoje só carrega o `ChannelSwitcher`, que
+mostra contas reais de `social_accounts` — "Todos os canais" é a única
+seleção de verdade enquanto não existir filtragem multi-conta no produto;
+contas individuais aparecem como contexto, não como ação clicável.
 
 ## 12. Acessibilidade
 
