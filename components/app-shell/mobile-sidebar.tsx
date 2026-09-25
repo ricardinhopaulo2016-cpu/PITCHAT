@@ -5,13 +5,29 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Menu, X } from "lucide-react";
-import { PitchatMark, PitchatWordmark } from "@/components/icons/pitchat";
+import { ChannelIcon, PitchatMark, PitchatWordmark } from "@/components/icons/pitchat";
 import { NAV_ITEMS } from "./nav-items";
 import { LogoutButton } from "@/app/dashboard/logout-button";
 import { SoundToggle } from "@/components/ui/sound-toggle";
+import type { ChannelSwitcherAccount } from "./channel-switcher";
+
+const STATUS_COLOR: Record<string, string> = {
+  connected: "var(--success)",
+  pending: "var(--text-muted)",
+  expired: "var(--warning)",
+  error: "var(--danger)",
+};
 
 /** Sidebar vira drawer no mobile — nada essencial desaparece (docs/PITCHAT_DESIGN_SYSTEM.md, seção 43 do briefing). */
-export function MobileSidebar({ workspaceName, email }: { workspaceName: string; email: string }) {
+export function MobileSidebar({
+  workspaceName,
+  email,
+  accounts,
+}: {
+  workspaceName: string;
+  email: string;
+  accounts: ChannelSwitcherAccount[];
+}) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
 
@@ -43,6 +59,21 @@ export function MobileSidebar({ workspaceName, email }: { workspaceName: string;
           </div>
 
           <Dialog.Title className="sr-only">Menu de navegação</Dialog.Title>
+
+          {/* Contexto de canal compacto — mesma peça do TopBar desktop, sem
+              switcher completo aqui: espaço é curto, e no mobile a lista de
+              contas em si mora em Social Accounts. */}
+          <div className="flex items-center gap-2 border-b border-border-subtle px-4 py-3 text-xs text-text-muted">
+            <ChannelIcon className="h-3.5 w-3.5" />
+            {accounts.length === 1
+              ? `@${accounts[0].username ?? "conta"}`
+              : accounts.length > 1
+                ? `${accounts.length} contas Instagram`
+                : "Nenhuma conta conectada"}
+            {accounts.length === 1 && (
+              <span className="h-1.5 w-1.5 rounded-full" style={{ background: STATUS_COLOR[accounts[0].status] ?? "var(--text-muted)" }} />
+            )}
+          </div>
 
           <nav className="flex flex-1 flex-col gap-0.5 px-2.5">
             {NAV_ITEMS.map((item) => {
