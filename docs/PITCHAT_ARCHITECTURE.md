@@ -4,7 +4,7 @@
 
 ## 1. Visão
 
-> **Mudança oficial de escopo (09/09/2026)**: a partir desta data, o PITCHAT V1 é **o nosso próprio ManyChat para Instagram** — foco absoluto no fluxo comentário → keyword match → resposta pública → private reply/DM → interação → continuação de flow → delay → condition → follow-up → Inbox + logs. Ver seção 12 (Roadmap) para as fases A–K vigentes.
+> **Mudança oficial de escopo (09/09/2026)**: a partir desta data, o PITCHAT V1 é **o nosso próprio ManyChat para Instagram** — foco absoluto no fluxo comentário → keyword match → resposta pública → private reply/DM → interação → continuação de flow → delay → condition → follow-up → Inbox + logs. Ver seção 12 (roadmap técnico A–K, histórico) e seção 13 (roadmap atual de produto / Signal Desk V2) — são dois roadmaps distintos com letras repetidas.
 
 PITCHAT é a plataforma interna para automação de Instagram (estilo ManyChat, só com o que a operação realmente usa) e Inbox operacional, com arquitetura pronta para, no futuro, ganhar Media Library avançada e publicação/agendamento sem reescrita.
 
@@ -14,12 +14,14 @@ PITCHAT é a plataforma interna para automação de Instagram (estilo ManyChat, 
 
 | Camada | Escolha | Motivo |
 |---|---|---|
-| Framework | Next.js 16.2.9 (App Router), React 19.2, TypeScript | Consistência com o PitBrain (projeto irmão) |
+| Framework | Next.js 16.3.4 (App Router, Turbopack), React 19.2.4, TypeScript 5 | Consistência com o PitBrain (projeto irmão). Versões conferidas contra `package.json`/`node_modules` em 26/09/2026 (inicialmente 16.2.9 em 08/09) |
 | Estilo | Tailwind CSS v4 + shadcn/radix | Idem |
 | Banco/Auth/Storage | Supabase — **projeto próprio e isolado**, não compartilha nada com o PitBrain | Isolamento de dados explicitamente pedido pelo usuário |
 | Hospedagem | Vercel (serverless) | Consistência; barato; mas ver limitação de execução longa abaixo |
 | Fila / Delay / Retry | **Upstash QStash** | Vercel é serverless — não segura `setTimeout` de minutos. QStash é fila HTTP gerenciada com delay e retry nativos, sem precisar manter um worker sempre ligado |
-| Testes | Vitest | Leve, roda bem em TS/ESM sem config extra |
+| Testes | Vitest 5 | Leve, roda bem em TS/ESM sem config extra |
+
+Outras dependências relevantes (`package.json`, 26/09/2026): `@supabase/supabase-js` ^2.108, `@supabase/ssr` ^0.12, `@upstash/qstash` ^2.7, ESLint 9. `@xyflow/react` **não** está instalado (entra só na Fase E2 de produto).
 
 ### Supabase — novo modelo de API keys (decidido 08/09/2026)
 
@@ -127,6 +129,22 @@ jobs                             -- espelho local do que foi enfileirado no QSta
 
 Todas as tabelas de domínio (exceto `workspaces` e `media_assets`, que amarram direto no workspace) carregam `workspace_id`. Nomes de perfil (`Papagaio`, `Dodo`...) **nunca aparecem em código** — são linhas em `profiles.name`.
 
+### 6.1 Uso real de `audit_logs`, `jobs` e `links` (auditado no código em HEAD `2648ab6`, 26/09/2026)
+
+Conferido por busca em `app/`, `lib/`, `components/`. Não agrupar as três como "sem uso":
+
+| Tabela | Estado | Quem usa |
+|---|---|---|
+| `audit_logs` | **EM USO** (escrita) | `app/api/conversations/[id]/automation/route.ts` → `conversation.human_takeover` e `conversation.automation_reactivated`; `app/api/comments/[id]/reply/route.ts` → `comment.manual_public_reply`; `app/api/jobs/resume-automation-run/route.ts` → `automation.yielded_to_human` |
+| `jobs` | **EM USO, escopo estreito** | Escrita só em `app/api/cron/refresh-meta-tokens/route.ts` (`type = refresh_meta_token`). Leitura em `app/dashboard/health/page.tsx` (alimenta `classifyTokenMaintenanceHealth`/`classifyQstashHealth` em `lib/health/aggregate.ts`). **Não** é espelho geral de tudo que vai ao QStash (delay, retry, webhook não gravam em `jobs`) — o próprio Health avisa que "só o refresh de token grava em `jobs` hoje" |
+| `links` | **SEM USO** | Nenhuma referência em `app/`, `lib/` ou `components/` (só existe no schema). UTM builder continua não implementado |
+
+### 6.2 `supabase/schema.sql` — snapshot, não fonte de verdade
+
+As **migrations** (`supabase/migrations/`) são a fonte de verdade; `schema.sql` é só snapshot de leitura (procedimento no `supabase/README.md`: `db dump --linked`, que exige Docker/Podman).
+
+Estado em 26/09/2026: a checagem por conteúdo indica que o snapshot **provavelmente acompanha** as migrations mais recentes (contém `conversations.last_read_at`, não contém mais `comments.matched_automation_id`/`automation_processed_at`), mas isso **não foi verificado por dump** — Docker não está instalado nesta máquina. Snapshot: **pendente de confirmação por dump**; nunca editar `schema.sql` manualmente.
+
 ## 7. Fluxo de webhook (nunca processar automação dentro da request)
 
 ```
@@ -144,6 +162,8 @@ QStash → POST /api/jobs/process-webhook-event (assinado, verificado com QSTASH
 Delay de automação (`DELAY` node) usa o mesmo mecanismo: QStash agenda o próximo step com `Upstash-Delay` e um callback assinado apontando pro `automation_run_id` + `step_index` a retomar.
 
 ## 8. Media Library — identidade sem depender de filename ⚠️ CONGELADO (09/09/2026)
+
+> **Distinção importante (24/09/2026)**: a Media Library segue CONGELADA **como feature** (upload pipeline, fingerprint, Drive, publisher, scheduler — nada retomado). Na Fase A de produto (Quick Polish) houve apenas um **refit visual limitado** das páginas `app/dashboard/media/*` para os tokens do SIGNAL DESK (commit `f6522d2`). Isso é só apresentação; não reabriu nenhum trabalho de feature.
 
 > Esta seção descreve código já existente (`app/dashboard/media/*`, `app/api/media/*`, `lib/media/*`, tabelas `media_assets`/`media_fingerprints`/`media_usage`/`media_duplicate_reviews`). **Não desenvolver, não refatorar, não corrigir bugs aqui** até nova decisão explícita — inclusive: sem suporte a vídeo grande, sem TUS, sem novo fingerprint, sem exclusão de código. Mantida apenas como referência histórica.
 
@@ -192,21 +212,36 @@ Listando `env:list` via `scripts/vercel-api.mjs` (API REST da Vercel), 10 variá
 | Comportamento pós-expiração do long-lived token (60 dias) não documentado explicitamente | Pode exigir reconexão manual sem aviso claro | `social_accounts.status` já modela `expired`/`error`; health check na UI deve avisar antes de expirar |
 | Projeto Supabase / conta Upstash-QStash — status de configuração real não confirmado nesta auditoria | Pode bloquear persistência/delay real | Confirmar com o usuário; enquanto faltar, rotas já falham explícito (`META_NOT_CONFIGURED`/QStash not configured), nunca fingem sucesso |
 
-## 12. Roadmap — substituído em 09/09/2026 (mudança oficial de escopo)
+## 12. Roadmap TÉCNICO A–K (histórico — substituído em 09/09/2026)
+
+> ⚠️ **Existem DOIS roadmaps com letras A–G/K.** Este (seção 12) é o **roadmap técnico original**, fases A–K (A = Meta/OAuth, B = Webhooks, I = Inbox, K = Hardening...). O roadmap de **produto/UI** mais recente (A = Quick Polish, B = Premium Shell, C = Inbox + Contacts V2...) está na **seção 13**. Ao escrever "Fase B concluída", sempre qualificar: "Fase B técnica (Webhooks)" ou "Fase B de produto (Premium Shell)".
 
 O roadmap anterior (Fase 0–12, com Media Library nas Fases 2–3) está **substituído** pelo plano abaixo. Auditoria de 09/09/2026 mostrou que boa parte da fundação de automação já está implementada e testada — o roadmap reflete isso (fases marcadas `[x]` já têm código funcional, ainda não testado contra API real da Meta por falta de Meta App).
 
 - [x] **Fase A** — Meta Integration research + connection: pesquisa oficial atualizada (`PITCHAT_META_INTEGRATION.md`), OAuth (`lib/meta/oauth.ts`, `app/api/auth/meta/*`) e UI de Social Accounts já implementados — falta testar contra Meta App real
 - [x] **Fase B** — Webhooks + normalização de eventos: `app/api/webhooks/meta/route.ts` (verificação, assinatura, idempotência, fila QStash) + `lib/meta/events.ts` já implementados
-- [~] **Fase C** — Comments + Contacts + Conversations: upsert idempotente já existe em `lib/automation/ingest.ts`; falta UI dedicada de Contacts e trigger isolado a partir de mensagem direta (hoje só comentário dispara run)
+- [x] **Fase C** — Comments + Contacts + Conversations (estado real em HEAD `2648ab6`, revisado 26/09/2026):
+  - ✅ Upsert idempotente de contact/conversation em `lib/automation/ingest.ts`.
+  - ✅ **UI de Contacts implementada**: `app/dashboard/contacts/page.tsx` (lista) e `app/dashboard/contacts/[id]/page.tsx` (detalhe). Ainda **sem E2E dedicado** da tela/fluxo de contato como marco separado (só a timeline do Inbox foi validada).
+  - ✅ **`ingestInstagramMessage()` existe** (DM avulsa, sem quick reply): cria/atualiza `contact`, cria/atualiza `conversation`, grava a mensagem inbound em `messages` e ela aparece no Inbox. Ignora o eco de mensagem da própria conta (`IGNORED_OWN_MESSAGE`).
+  - ❌ **DM avulsa NÃO inicia `automation_run` nova.** O trigger automático do V1 continua sendo **comentário** (`TRIGGER_COMMENT`), mais os resumes de quick reply/postback já existentes (`ingestInstagramQuickReply` → `claimWaitingRun`). Trigger por DM é decisão futura, não bug.
 - [x] **Fase D** — Automation Engine mínimo: grafo + 13 node types + testes (`lib/automation/{graph,node-handlers,engine}.ts`)
 - [x] **Fase E** — Public Reply + Private Reply: implementado em `lib/meta/client.ts` + node handlers
 - [x] **Fase F** — Quick Replies + resume flow: `buildQuickReplyPayload`/`parseQuickReplyPayload` em `lib/automation/engine.ts`, `ingestInstagramQuickReply` em `ingest.ts`
 - [x] **Fase G** — QStash + Delay: `lib/qstash.ts`, `app/api/jobs/resume-automation-run/route.ts`, `claimWaitingRun` (lock atômico)
 - [x] **Fase H** — Conditions + Tags + Fields: node types `CONDITION`/`ADD_TAG`/`REMOVE_TAG`/`SET_CUSTOM_FIELD` implementados
-- [x] **Fase I** — Inbox + Human Takeover: **concluída e E2E validada em produção (24/09/2026)**, ver marco abaixo
-- [~] **Fase J** — Automation Editor: CRUD completo (`app/api/automations/**`) + editor sequencial V1 (`app/dashboard/automations/**`, `lib/automation/flow-spec.ts`) implementados em 09/09/2026, com o flow de referência "Instagram Comment → DM Test" disponível via botão de seed. Pendente: UI de Contacts (item 31), editor visual (canvas), CONDITION com segundo braço editável (V1 força `false` → END sempre)
-- [x] **Fase K** — Hardening + teste ponta a ponta real: **concluída em 24/09/2026**, com tráfego real do Instagram (ver marco abaixo). Ainda pendente dessa fase: rodar `supabase db dump` pra sincronizar `schema.sql` com as migrations; hardening P0 (Fase B do plano de auditoria, em andamento).
+- [x] **Fase I** — Inbox + Human Takeover: **concluída e E2E validada em produção (24/09/2026)**, ver marco abaixo. Hoje existem: ✅ Inbox, ✅ UI de Contacts, ✅ timeline (comments + messages + steps), ✅ contexto de post por comentário, ✅ distinção comentário vs DM, ✅ Human Takeover, ✅ reativação, ✅ DM manual, ✅ resposta pública manual, ✅ `audit_logs` correspondentes (ver seção 6.1). Contacts: interface funcional, sem E2E dedicado.
+- [~] **Fase J** — Automation Editor: CRUD completo (`app/api/automations/**`) + editor sequencial V1 (`app/dashboard/automations/**`, `lib/automation/flow-spec.ts`) implementados em 09/09/2026, com o flow de referência "Instagram Comment → DM Test" disponível via botão de seed. Estado em `2648ab6` (conferido em `flow-spec.ts`): ✅ editor sequencial V1 existe; `RANDOM_SPLIT`/`HTTP_REQUEST` são suportados pelo engine mas **não expostos** no editor (`flow-spec.ts` os trata como "não suportados pelo editor sequencial V1"); `CONDITION` continua limitado — saída `true` segue a lista, saída `false` vai sempre direto ao `END`; ❌ canvas visual não existe; ❌ `validateGraph` autoritativo (backend) não existe. Ordem planejada: E1 `validateGraph` **antes** de E2 canvas `@xyflow/react` (seção 13).
+- [x] **Fase K** — Hardening + teste ponta a ponta real: **concluída em 24/09/2026**, com tráfego real do Instagram (ver marco abaixo). Hardening P0 **concluído** (não está mais em andamento):
+  - ✅ refresh automático de long-lived token (cron diário `app/api/cron/refresh-meta-tokens`, grava em `jobs` com `type = refresh_meta_token`) e estados de outcome (`refresh_success`, `refresh_retryable_failure`, `refresh_non_retryable_failure`, `reauth_required` — `lib/meta/token-maintenance.ts`)
+  - ✅ `SOCIAL_ACCOUNT_NOT_FOUND` explícito (não é mais processado silenciosamente)
+  - ✅ gate de revisão obrigatório antes de publicar automação
+  - ✅ retry automático de `MetaApiError` `RETRYABLE` com backoff de **1 / 5 / 15 min** via QStash (`lib/automation/retry-policy.ts`; esgotadas as tentativas, a run falha de vez)
+  - ✅ Health Dashboard (`/dashboard/health`)
+  - ✅ logs sensíveis revisados (assinatura de webhook truncada, nunca HMAC completo)
+  - ✅ `automation.yielded_to_human` registrado em `audit_logs`
+  - Melhoria de observabilidade (**não** bug bloqueante): gravar o `external reply id` retornado pelo `PUBLIC_REPLY`.
+  - Snapshot `supabase/schema.sql`: ver seção 6.2.
 
 > **✅ MARCO — E2E real validado em produção (24/09/2026)**: os 7 passos abaixo, que definiam o critério de "funcionando de verdade" desde 09/09/2026, foram todos confirmados com tráfego real do Instagram (não simulado, não reprocessado manualmente) na conta de teste `@papagaio_milhas`:
 > 1. ✅ Meta App criado, configurado e **Live**
@@ -221,7 +256,7 @@ O roadmap anterior (Fase 0–12, com Media Library nas Fases 2–3) está **subs
 >
 > Bugs reais encontrados e corrigidos nesse processo (não achados por teste automatizado — só apareceram contra a API real): ID da conta gravado errado no OAuth (app-scoped vs. real), secret errado validando o webhook (`META_APP_SECRET` vs. `INSTAGRAM_APP_SECRET`), e bubble duplicada no Quick Reply (texto repetido em duas mensagens separadas). Detalhes e commits em `PITCHAT_META_INTEGRATION.md`.
 >
-> Com o E2E mínimo fechado, a prioridade agora é hardening P0 (token refresh automático, eliminar falha silenciosa de `social_account` não encontrada, gate de revisão antes de publicar automação) antes de Inbox (I)/Contacts/editor visual.
+> Com o E2E mínimo fechado, a prioridade (então) era hardening P0 antes de Inbox/Contacts/editor visual. **Esse hardening P0 já foi concluído** (lista na Fase K acima).
 
 > **✅ MARCO — Inbox + Human Takeover E2E validado em produção (24/09/2026)**, na mesma conta de teste `@papagaio_milhas` (contato `@paulo.cadoxd`):
 > 1. ✅ "Assumir controle" real — `conversations.automation_enabled = false`, gravado em `audit_logs` (`conversation.human_takeover`)
@@ -230,12 +265,44 @@ O roadmap anterior (Fase 0–12, com Media Library nas Fases 2–3) está **subs
 > 4. ✅ Envio manual de DM durante o takeover — mensagem enviada e confirmada recebida do lado do contato
 > 5. ✅ Timeline do Inbox (comments + messages + automation_run_steps) validada visualmente em produção, incluindo o contexto de post por comentário (ver achado abaixo) e o rótulo "Comentário"/"Mensagem" por entrada
 > 6. ✅ "Responder publicamente" — **E2E real confirmado (24/09/2026, 22:03 UTC)**: clique real no comentário `987a6548…`, texto "🦜 Resposta pública manual de teste" apareceu no Instagram (confirmado visualmente), `audit_logs` foi de 0→1 (`comment.manual_public_reply`), sem criar DM, sem disparar `automation_run`, sem alterar `automation_enabled` — verificado por diff direto no banco antes/depois, não só pela UI
-> 7. Contacts — telas no ar, sem teste E2E dedicado ainda
+> 7. Contacts — UI implementada (lista + detalhe), sem teste E2E dedicado ainda
 >
 > Achado real nesse processo (não é bug — investigado e descartado com evidência): dois comentários reais "piada de papagaio" do mesmo contato, em dois posts diferentes, apareciam lado a lado na timeline com o mesmo texto — pareciam duplicata. Confirmado via `external_comment_id`/`external_media_id`/`webhook_events` distintos que eram dois eventos Meta genuinamente diferentes, cada um processado uma única vez. Corrigida a lacuna visual (não a ingestão): a timeline agora mostra "Comentário em post · `<id truncado>`" por entrada. Detalhes em `PITCHAT_META_INTEGRATION.md`.
 
 **Correção de bug encontrada em 09/09/2026**: `lib/meta/events.ts` só reconhecia `messages`/`messaging_postbacks` no formato legado `entry.messaging[]` (Messenger/Facebook Page) — a doc oficial revalidada mostra que o envelope com exemplo confirmado é `entry.changes[].{field,value}` (mesmo formato de `comments`). Corrigido para aceitar os dois formatos; ver `docs/PITCHAT_META_INTEGRATION.md` §3.
 
-**Gaps adicionais identificados na auditoria** (não bloqueantes, mas fora das fases acima): tabelas `jobs`, `links`, `audit_logs` existem no schema mas nenhum código lê/escreve nelas ainda; falta teste dedicado para `lib/automation/ingest.ts`; editor V1 não expõe `RANDOM_SPLIT`/`HTTP_REQUEST` na UI (engine já suporta os dois).
+**Gaps adicionais** (não bloqueantes, fora das fases acima; revisados 26/09/2026): falta teste dedicado para `lib/automation/ingest.ts`; editor V1 não expõe `RANDOM_SPLIT`/`HTTP_REQUEST` na UI (engine já suporta os dois). O item antigo "jobs/links/audit_logs sem uso" foi **corrigido**: ver seção 6.1 (audit real, tabela por tabela).
 
-**Explicitamente CONGELADO** (código preservado, zero desenvolvimento novo até decisão explícita): Media Library (upload, storage, ffprobe, SHA-256, fingerprint perceptual, dedup), Google Drive, publicação, agendamento, calendário, scheduler, TikTok Publisher, qualquer feature estilo mLabs.
+**Explicitamente CONGELADO** (código preservado, zero desenvolvimento novo até decisão explícita): Media Library (upload, storage, ffprobe, SHA-256, fingerprint perceptual, dedup), Google Drive, publicação, agendamento, calendário, scheduler, TikTok Publisher, qualquer feature estilo mLabs. (Refit visual da Media já feito na Fase A de produto — ver nota na seção 8; não é retomada da feature.)
+
+## 13. Roadmap atual de Produto / Signal Desk V2
+
+> Este é o roadmap de **produto/UI** (Fase A executada em 24/09/2026, Fase B em 25/09/2026). **Não confundir** com o roadmap técnico A–K da seção 12: as letras se repetem com significados diferentes. Design system e tokens: [`PITCHAT_DESIGN_SYSTEM.md`](./PITCHAT_DESIGN_SYSTEM.md).
+
+| Fase | Nome | Estado (26/09/2026) |
+|---|---|---|
+| A | Quick Polish | ✅ concluída, validada visualmente em produção pelo Paulo |
+| B | Premium Shell / Signal Desk V2 | ✅ implementada, validada visualmente pelo Paulo |
+| C | Inbox + Contacts V2 | ▶ **próxima fase** (não iniciada) |
+| D | Multi-Instagram | ⏳ futura |
+| E1 | Backend Graph Validator (`validateGraph` autoritativo) | ⏳ futura — vem **antes** de E2 |
+| E2 | Automation Canvas (`@xyflow/react`) | ⏳ futura |
+| F | YouTube | ⏳ futura |
+| G | TikTok Capability Spike | ⏳ futura |
+
+### 13.1 Fase B de produto — Premium Shell (estado real)
+
+- ✅ **Thin Rail** de 64px (só ícones; substituiu a `Sidebar` de 216px) — `components/app-shell/rail.tsx`
+- ✅ **TopBar** — `components/app-shell/top-bar.tsx`
+- ✅ **ChannelSwitcher** — `components/app-shell/channel-switcher.tsx`, mostra contas reais de `social_accounts`. **"Todos os canais" é a única seleção funcional**; as contas individuais aparecem só como contexto visual. **Não existe filtragem por conta** em nenhuma tela.
+- ✅ Mobile: contexto mínimo de canal no drawer.
+- ⚠️ **Multi-Instagram NÃO está concluído** — o switcher é só a base visual da Fase D.
+
+### 13.2 Fase D — decisão registrada sobre `contacts` (não migrar agora)
+
+`contacts` **não será migrada agora**. `contacts.platform_user_id` vem do IGSID. Há evidência forte de que o IGSID é escopado por conta profissional, mas a decisão final depende de **tráfego real**. Antes de conectar contas em escala, testar a mesma pessoa interagindo com IG01 e IG02:
+
+- IG01 → `platform_user_id` A, IG02 → `platform_user_id` B, com **A ≠ B**: o schema atual já mantém identidades distintas — nada a migrar.
+- **A == B**: reavaliar o schema de `contacts`.
+
+**Nenhuma migration antes desse teste.** (Não é um bug conhecido; é uma dúvida a validar.)
