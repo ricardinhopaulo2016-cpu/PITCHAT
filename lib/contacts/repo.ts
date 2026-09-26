@@ -5,6 +5,8 @@ const LIST_LIMIT = 100;
 export type ContactListItem = {
   id: string;
   username: string | null;
+  /** `contacts.avatar_url` — null hoje (sem enrichment); a UI cai pra iniciais. */
+  avatarUrl: string | null;
   platform: string;
   firstSeenAt: string;
   lastSeenAt: string;
@@ -16,7 +18,7 @@ export type ContactListItem = {
 export async function listContacts(admin: SupabaseClient, workspaceId: string): Promise<ContactListItem[]> {
   const { data: contacts } = await admin
     .from("contacts")
-    .select("id, username, platform, first_seen_at, last_seen_at")
+    .select("id, username, avatar_url, platform, first_seen_at, last_seen_at")
     .eq("workspace_id", workspaceId)
     .order("last_seen_at", { ascending: false })
     .limit(LIST_LIMIT);
@@ -51,6 +53,7 @@ export async function listContacts(admin: SupabaseClient, workspaceId: string): 
   return contacts.map((c) => ({
     id: c.id as string,
     username: c.username as string | null,
+    avatarUrl: c.avatar_url as string | null,
     platform: c.platform as string,
     firstSeenAt: c.first_seen_at as string,
     lastSeenAt: c.last_seen_at as string,
@@ -68,7 +71,7 @@ export type ContactDetail = ContactListItem & {
 export async function loadContactDetail(admin: SupabaseClient, contactId: string, workspaceId: string): Promise<ContactDetail | null> {
   const { data: contact } = await admin
     .from("contacts")
-    .select("id, username, platform, first_seen_at, last_seen_at")
+    .select("id, username, avatar_url, platform, first_seen_at, last_seen_at")
     .eq("id", contactId)
     .eq("workspace_id", workspaceId)
     .maybeSingle();
@@ -87,6 +90,7 @@ export async function loadContactDetail(admin: SupabaseClient, contactId: string
   return {
     id: contact.id,
     username: contact.username,
+    avatarUrl: contact.avatar_url as string | null,
     platform: contact.platform,
     firstSeenAt: contact.first_seen_at,
     lastSeenAt: contact.last_seen_at,
