@@ -9,7 +9,8 @@ import { useToast } from "@/components/ui/toast";
 /**
  * Human takeover — "Assumir conversa" / "Reativar automação". Nunca
  * ambíguo: o estado atual sempre aparece com marker + texto (nunca só cor),
- * mesmo padrão de components/ui/status-indicator.tsx.
+ * mesmo padrão de components/ui/status-indicator.tsx. Manual usa o
+ * semântico `warning` (âmbar) — nunca vermelho, que é reservado a falha.
  */
 export function TakeoverToggle({ conversationId, automationEnabled }: { conversationId: string; automationEnabled: boolean }) {
   const router = useRouter();
@@ -33,19 +34,21 @@ export function TakeoverToggle({ conversationId, automationEnabled }: { conversa
   }
 
   return (
-    <div className="flex items-center gap-3">
-      <span
-        className="inline-flex items-center gap-1.5 text-sm"
-        style={{ color: automationEnabled ? "var(--success)" : "var(--warning)" }}
-      >
-        <SignalMarker
-          type={automationEnabled ? "action" : "wait"}
-          width={10}
-          height={10}
-          style={{ color: automationEnabled ? "var(--success)" : "var(--warning)" }}
-        />
-        {automationEnabled ? "Automação ativa" : "Atendimento manual"}
-      </span>
+    <div className="flex flex-wrap items-center gap-3">
+      {automationEnabled ? (
+        <span role="status" className="inline-flex items-center gap-1.5 text-[13px] text-text-secondary">
+          <SignalMarker type="action" width={10} height={10} style={{ color: "var(--success)" }} />
+          Automação ativa
+        </span>
+      ) : (
+        <span
+          role="status"
+          className="inline-flex items-center gap-1.5 rounded-[var(--radius-input)] border border-warning/40 bg-warning-soft px-2.5 py-1 text-[13px] font-medium text-warning"
+        >
+          <SignalMarker type="wait" width={10} height={10} />
+          Operação manual
+        </span>
+      )}
       <Button type="button" variant="secondary" disabled={loading} onClick={() => toggle(!automationEnabled)}>
         {automationEnabled ? "Assumir conversa" : "Reativar automação"}
       </Button>

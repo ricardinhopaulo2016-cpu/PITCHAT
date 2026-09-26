@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { CornerDownRight } from "lucide-react";
 import { Textarea } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
@@ -45,16 +46,22 @@ export function PublicReplyAction({ commentId }: { commentId: string }) {
 
   if (!open) {
     return (
-      <button type="button" onClick={() => setOpen(true)} className="text-[11px] text-text-muted hover:text-signal">
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="inline-flex items-center gap-1 text-[12px] text-text-muted transition-colors duration-[var(--motion-fast)] hover:text-signal"
+      >
+        <CornerDownRight className="h-3 w-3" aria-hidden="true" />
         Responder publicamente
       </button>
     );
   }
 
   return (
-    <div className="flex w-full max-w-[85%] flex-col gap-1.5">
+    <div className="flex w-full max-w-xl flex-col gap-1.5">
       <Textarea
         rows={2}
+        aria-label="Resposta pública ao comentário"
         autoFocus
         value={text}
         placeholder="Resposta pública a este comentário…"
@@ -67,7 +74,11 @@ export function PublicReplyAction({ commentId }: { commentId: string }) {
         <Button type="button" variant="primary" disabled={sending || !text.trim()} onClick={send}>
           {sending ? "Enviando…" : "Responder"}
         </Button>
-        {error && <span className="text-xs text-danger">{error}</span>}
+        {error && (
+          <span role="alert" className="text-xs text-danger">
+            {error}
+          </span>
+        )}
       </div>
     </div>
   );

@@ -7,6 +7,9 @@ export type ConversationListItem = {
   id: string;
   contactId: string;
   contactUsername: string | null;
+  /** `contacts.avatar_url` — null hoje pra todo mundo (nenhuma rotina de enrichment existe); a UI cai pra iniciais. */
+  contactAvatarUrl: string | null;
+  platform: string;
   socialAccountUsername: string | null;
   automationEnabled: boolean;
   unread: boolean;
@@ -26,7 +29,7 @@ export async function listConversations(admin: SupabaseClient, workspaceId: stri
   const { data: conversations } = await admin
     .from("conversations")
     .select(
-      "id, contact_id, automation_enabled, last_message_at, last_read_at, contact:contacts(username), social_account:social_accounts(username)"
+      "id, contact_id, automation_enabled, last_message_at, last_read_at, contact:contacts(username, avatar_url, platform), social_account:social_accounts(username)"
     )
     .eq("workspace_id", workspaceId)
     .order("last_message_at", { ascending: false, nullsFirst: false })
@@ -73,11 +76,14 @@ export async function listConversations(admin: SupabaseClient, workspaceId: stri
 
     const lastMessageAt = c.last_message_at as string | null;
     const lastReadAt = c.last_read_at as string | null;
+    const contact = c.contact as unknown as { username: string | null; avatar_url: string | null; platform: string | null } | null;
 
     return {
       id: c.id as string,
       contactId: c.contact_id as string,
-      contactUsername: (c.contact as unknown as { username: string | null } | null)?.username ?? null,
+      contactUsername: contact?.username ?? null,
+      contactAvatarUrl: contact?.avatar_url ?? null,
+      platform: contact?.platform ?? "instagram",
       socialAccountUsername: (c.social_account as unknown as { username: string | null } | null)?.username ?? null,
       automationEnabled: c.automation_enabled !== false,
       unread: !!lastMessageAt && (!lastReadAt || lastMessageAt > lastReadAt),
@@ -95,6 +101,19 @@ export type ConversationRow = {
   contact_id: string;
   status: string;
   automation_enabled: boolean;
+  /** Conta Instagram que recebeu a conversa (`social_accounts.username`). */
+  socialAccountUsername: string | null;
+};
+
+/**
+ * Marcador de sinal de uma linha de engine na timeline — segue a semântica
+ * de components/icons/pitchat/signal-marker.tsx: ◆ lógica, ‖ espera, ■ fim,
+ * ! incidente. Ações normais (mensagens) nunca ganham marker de engine.
+ */
+export type TimelineSignal = {
+  marker: "logic" | "wait" | "end" | "error";
+  label: string;
+  detail: string | null;
 };
 
 export type TimelineEntry = {
@@ -104,8 +123,12 @@ export type TimelineEntry = {
   text: string | null;
   /** Só presente em entradas de comentário (kind=comment) — PK interna de `comments`, usada por "Responder" (POST /api/comments/[id]/reply). Nunca o external_comment_id da Meta. */
   commentId?: string;
-  /** "comment" (veio de `comments`) ou "dm" (veio de `messages`) — só contexto visual pra distinguir "Comentário" de "Mensagem" na UI, nunca usado pra lógica. */
-  channel: "comment" | "dm";
+  /**
+   * "comment" (veio de `comments`, ou é a resposta pública da automação),
+   * "dm" (veio de `messages`) ou "engine" (sinal compacto de
+   * `automation_run_steps`, ver `signal`) — só contexto visual, nunca lógica.
+   */
+  channel: "comment" | "dm" | "engine";
   /**
    * `comments.external_media_id` (o post da Meta onde o comentário
    * aconteceu) — achado real 24/09/2026: o mesmo contato pode comentar a
@@ -116,6 +139,14 @@ export type TimelineEntry = {
    * o pedido desta rodada), então por ora é só o ID truncado.
    */
   externalMediaId?: string | null;
+  /** `messages.type` (text | quick_reply | button | …) — só em entradas de DM; distingue clique de quick reply de texto livre. */
+  messageType?: string;
+  /** Opções de um quick reply enviado (`messages.payload.options`). */
+  options?: string[];
+  /** Botão de um Button Template enviado (`messages.payload.button`). */
+  button?: { title: string; url: string };
+  /** Só em `channel: "engine"`. */
+  signal?: TimelineSignal;
 };
 
 export type AutomationRunSummary = {
@@ -128,11 +159,156 @@ export type AutomationRunSummary = {
 };
 
 /**
+ * Tipos de step que aparecem como entrada própria na timeline. PUBLIC_REPLY
+ * porque não mora em `messages`; KEYWORD_MATCH/CONDITION/DELAY/END porque
+ * são decisões/pausas que não deixam rastro em nenhuma outra tabela.
+ * SEND_MESSAGE/PRIVATE_REPLY/QUICK_REPLY ficam DE FORA de propósito — já
+ * existem em `messages`, mostrar de novo duplicaria a mesma informação.
+ * ADD_TAG/REMOVE_TAG/SET_CUSTOM_FIELD/HTTP_REQUEST/RANDOM_SPLIT ficam só na
+ * observabilidade técnica.
+ */
+const TIMELINE_STEP_TYPES = ["PUBLIC_REPLY", "KEYWORD_MATCH", "CONDITION", "DELAY", "END"];
+
+const NODE_LABEL: Record<string, string> = {
+  PUBLIC_REPLY: "Resposta pública",
+  PRIVATE_REPLY: "Resposta privada",
+  SEND_MESSAGE: "Envio de mensagem",
+  QUICK_REPLY: "Quick reply",
+  KEYWORD_MATCH: "Keyword match",
+  CONDITION: "Condição",
+  DELAY: "Espera",
+  END: "Fim do fluxo",
+  ADD_TAG: "Adicionar tag",
+  REMOVE_TAG: "Remover tag",
+  SET_CUSTOM_FIELD: "Campo customizado",
+  HTTP_REQUEST: "Requisição HTTP",
+  RANDOM_SPLIT: "Split aleatório",
+};
+
+export type RunStepRow = {
+  id: string;
+  automation_run_id: string;
+  node_type: string;
+  status: string;
+  input: unknown;
+  output: unknown;
+  error: unknown;
+  attempt: number | null;
+  started_at: string;
+};
+
+type CommentRow = { id: string; text: string | null; created_at: string; external_media_id: string | null };
+type MessageRow = {
+  id: string;
+  text: string | null;
+  direction: string;
+  origin: string | null;
+  type?: string | null;
+  payload?: unknown;
+  created_at: string;
+  sent_at: string | null;
+  received_at: string | null;
+};
+
+function stepToEntry(s: RunStepRow): TimelineEntry | null {
+  const base = { id: `step-${s.id}`, at: s.started_at, actor: "AUTOMATION" as const, text: null };
+
+  if (s.status === "failed") {
+    const message = (s.error as { message?: string } | null)?.message ?? "erro desconhecido";
+    const attempt = s.attempt && s.attempt > 1 ? ` · tentativa ${s.attempt}` : "";
+    return {
+      ...base,
+      channel: "engine",
+      signal: { marker: "error", label: `Falha · ${NODE_LABEL[s.node_type] ?? s.node_type}${attempt}`, detail: message },
+    };
+  }
+  if (s.status !== "succeeded") return null;
+
+  switch (s.node_type) {
+    case "PUBLIC_REPLY":
+      return { ...base, channel: "comment", text: (s.output as { text?: string } | null)?.text ?? null };
+    case "KEYWORD_MATCH": {
+      const matched = (s.output as { matched?: boolean } | null)?.matched !== false;
+      const trigger = typeof s.input === "string" && s.input.length > 0 ? `“${s.input}”` : null;
+      return {
+        ...base,
+        channel: "engine",
+        signal: { marker: "logic", label: matched ? "Keyword match" : "Sem correspondência de keyword", detail: trigger },
+      };
+    }
+    case "CONDITION": {
+      const branch = (s.output as { branch?: string } | null)?.branch;
+      return { ...base, channel: "engine", signal: { marker: "logic", label: "Condição", detail: branch ? `→ ${branch}` : null } };
+    }
+    case "DELAY": {
+      const minutes = (s.input as { minutes?: number } | null)?.minutes;
+      return {
+        ...base,
+        channel: "engine",
+        signal: { marker: "wait", label: minutes ? `Espera · ${minutes} min` : "Espera", detail: null },
+      };
+    }
+    case "END":
+      return { ...base, channel: "engine", signal: { marker: "end", label: "Fluxo concluído", detail: null } };
+    default:
+      return null; // qualquer outro tipo não vira entrada — ver TIMELINE_STEP_TYPES
+  }
+}
+
+/**
+ * Composição pura da timeline (sem I/O — testável direto): comentários,
+ * mensagens e steps de engine, ordenados cronologicamente. Empate de
+ * timestamp mantém a ordem de inserção (comentário → step de engine →
+ * mensagem), que reflete a ordem real em que o motor grava.
+ */
+export function composeTimeline(input: { comments: CommentRow[]; messages: MessageRow[]; steps: RunStepRow[] }): TimelineEntry[] {
+  const timeline: TimelineEntry[] = [];
+
+  for (const c of input.comments) {
+    timeline.push({
+      id: `comment-${c.id}`,
+      at: c.created_at,
+      actor: "USER",
+      text: c.text,
+      commentId: c.id,
+      channel: "comment",
+      externalMediaId: c.external_media_id ?? null,
+    });
+  }
+
+  const steps = [...input.steps].sort((a, b) => new Date(a.started_at).getTime() - new Date(b.started_at).getTime());
+  for (const s of steps) {
+    const entry = stepToEntry(s);
+    if (entry) timeline.push(entry);
+  }
+
+  for (const m of input.messages) {
+    const actor: TimelineEntry["actor"] = m.direction === "inbound" ? "USER" : m.origin === "manual" ? "HUMAN" : "AUTOMATION";
+    const payload = (m.payload ?? {}) as { options?: { title?: string }[]; button?: { title?: string; url?: string } };
+    const options = (payload.options ?? []).map((o) => o.title).filter((t): t is string => !!t);
+    timeline.push({
+      id: `msg-${m.id}`,
+      at: m.sent_at ?? m.received_at ?? m.created_at,
+      actor,
+      text: m.text,
+      channel: "dm",
+      ...(m.type ? { messageType: m.type } : {}),
+      ...(options.length > 0 ? { options } : {}),
+      ...(payload.button?.title && payload.button.url ? { button: { title: payload.button.title, url: payload.button.url } } : {}),
+    });
+  }
+
+  timeline.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+  return timeline;
+}
+
+/**
  * Monta a timeline real de uma conversa combinando 3 fontes (nunca uma
  * tabela nova só pra "unificar" — os dados já existem espalhados):
- * `comments` (o que o usuário comentou), `automation_run_steps` do tipo
- * PUBLIC_REPLY (resposta pública — não é DM, não fica em `messages` por
- * design) e `messages` (toda DM real: automação, clique, manual).
+ * `comments` (o que o usuário comentou), `automation_run_steps` (resposta
+ * pública + sinais compactos do engine, ver TIMELINE_STEP_TYPES) e
+ * `messages` (toda DM real: automação, clique, manual). Queries fixas e
+ * bounded — 3 em paralelo + 2 em paralelo dos steps, nunca N+1.
  */
 export async function loadConversationTimeline(
   admin: SupabaseClient,
@@ -148,7 +324,7 @@ export async function loadConversationTimeline(
       .limit(ACTIVITY_LIMIT),
     admin
       .from("messages")
-      .select("id, text, direction, origin, created_at, sent_at, received_at")
+      .select("id, text, direction, origin, type, payload, created_at, sent_at, received_at")
       .eq("conversation_id", params.conversationId)
       .order("created_at", { ascending: true })
       .limit(ACTIVITY_LIMIT),
@@ -161,55 +337,50 @@ export async function loadConversationTimeline(
   ]);
 
   const runIds = (runs ?? []).map((r) => r.id as string);
-  const { data: publicReplySteps } =
+  const stepColumns = "id, automation_run_id, node_type, status, input, output, error, attempt, started_at";
+
+  // Duas queries bounded em paralelo: os tipos que viram entrada na timeline
+  // + QUALQUER step que falhou (falha nunca pode ficar invisível, seja qual
+  // for o node). Mais recentes primeiro pra o teto nunca cortar o fim da
+  // conversa; composeTimeline reordena cronologicamente.
+  const [{ data: timelineSteps }, { data: failedSteps }] =
     runIds.length > 0
-      ? await admin
-          .from("automation_run_steps")
-          .select("id, automation_run_id, output, started_at, status, error")
-          .in("automation_run_id", runIds)
-          .eq("node_type", "PUBLIC_REPLY")
-          .limit(ACTIVITY_LIMIT)
-      : { data: [] as Record<string, unknown>[] };
+      ? await Promise.all([
+          admin
+            .from("automation_run_steps")
+            .select(stepColumns)
+            .in("automation_run_id", runIds)
+            .in("node_type", TIMELINE_STEP_TYPES)
+            .order("started_at", { ascending: false })
+            .limit(ACTIVITY_LIMIT),
+          admin
+            .from("automation_run_steps")
+            .select(stepColumns)
+            .in("automation_run_id", runIds)
+            .eq("status", "failed")
+            .order("started_at", { ascending: false })
+            .limit(ACTIVITY_LIMIT),
+        ])
+      : [{ data: [] as Record<string, unknown>[] }, { data: [] as Record<string, unknown>[] }];
 
-  const timeline: TimelineEntry[] = [];
-
-  for (const c of comments ?? []) {
-    timeline.push({
-      id: `comment-${c.id}`,
-      at: c.created_at as string,
-      actor: "USER",
-      text: c.text as string | null,
-      commentId: c.id as string,
-      channel: "comment",
-      externalMediaId: (c.external_media_id as string | null) ?? null,
-    });
+  const stepsById = new Map<string, RunStepRow>();
+  for (const s of [...(timelineSteps ?? []), ...(failedSteps ?? [])]) {
+    stepsById.set(s.id as string, s as unknown as RunStepRow);
   }
+  const steps = [...stepsById.values()];
 
-  for (const s of publicReplySteps ?? []) {
-    if (s.status !== "succeeded") continue;
-    const output = s.output as { text?: string } | null;
-    timeline.push({ id: `step-${s.id}`, at: s.started_at as string, actor: "AUTOMATION", text: output?.text ?? null, channel: "comment" });
-  }
+  const timeline = composeTimeline({
+    comments: (comments ?? []) as unknown as CommentRow[],
+    messages: (messages ?? []) as unknown as MessageRow[],
+    steps,
+  });
 
-  for (const m of messages ?? []) {
-    const actor: TimelineEntry["actor"] = m.direction === "inbound" ? "USER" : m.origin === "manual" ? "HUMAN" : "AUTOMATION";
-    timeline.push({
-      id: `msg-${m.id}`,
-      at: (m.sent_at ?? m.received_at ?? m.created_at) as string,
-      actor,
-      text: m.text as string | null,
-      channel: "dm",
-    });
-  }
-
-  timeline.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
-
-  // Erro real de um step failed do mesmo run — mostrado recolhido na UI
-  // (observabilidade secundária, nunca em destaque na timeline principal).
+  // Erro real de um step failed do mesmo run — observabilidade secundária
+  // (painel de contexto), nunca em destaque na timeline principal.
   const failedErrorByRun = new Map<string, string>();
-  for (const s of publicReplySteps ?? []) {
-    if (s.status === "failed" && s.error && !failedErrorByRun.has(s.automation_run_id as string)) {
-      failedErrorByRun.set(s.automation_run_id as string, ((s.error as { message?: string }).message ?? "erro desconhecido"));
+  for (const s of steps) {
+    if (s.status === "failed" && s.error && !failedErrorByRun.has(s.automation_run_id)) {
+      failedErrorByRun.set(s.automation_run_id, (s.error as { message?: string }).message ?? "erro desconhecido");
     }
   }
 
@@ -233,9 +404,13 @@ export async function loadConversationForWorkspace(
 ): Promise<ConversationRow | null> {
   const { data } = await admin
     .from("conversations")
-    .select("id, workspace_id, social_account_id, contact_id, status, automation_enabled")
+    .select("id, workspace_id, social_account_id, contact_id, status, automation_enabled, social_account:social_accounts(username)")
     .eq("id", conversationId)
     .eq("workspace_id", workspaceId)
     .maybeSingle();
-  return data as ConversationRow | null;
+  if (!data) return null;
+  const { social_account, ...row } = data as unknown as Omit<ConversationRow, "socialAccountUsername"> & {
+    social_account: { username: string | null } | null;
+  };
+  return { ...row, socialAccountUsername: social_account?.username ?? null };
 }

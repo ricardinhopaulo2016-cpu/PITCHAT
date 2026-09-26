@@ -41,9 +41,10 @@ export function MessageComposer({ conversationId }: { conversationId: string }) 
   }
 
   return (
-    <div className="flex flex-col gap-2 border-t border-border-subtle p-4">
+    <div className="flex flex-col gap-2 border-t border-border-subtle px-5 py-3">
       <Textarea
         rows={2}
+        aria-label="Mensagem manual"
         value={text}
         placeholder="Mensagem manual…"
         onChange={(e) => setText(e.target.value)}
@@ -55,7 +56,13 @@ export function MessageComposer({ conversationId }: { conversationId: string }) 
         }}
       />
       <div className="flex items-center justify-between gap-3">
-        {error ? <span className="text-xs text-danger">{error}</span> : <span />}
+        {error ? (
+          <span role="alert" className="text-xs text-danger">
+            {error}
+          </span>
+        ) : (
+          <span className="text-[11px] text-text-muted">Enter envia · Shift+Enter quebra a linha</span>
+        )}
         <Button type="button" variant="primary" disabled={sending || !text.trim()} onClick={send}>
           {sending ? "Enviando…" : "Enviar"}
         </Button>
