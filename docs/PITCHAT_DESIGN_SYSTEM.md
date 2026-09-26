@@ -131,6 +131,20 @@ mostra contas reais de `social_accounts` — "Todos os canais" é a única
 seleção de verdade enquanto não existir filtragem multi-conta no produto;
 contas individuais aparecem como contexto, não como ação clicável.
 
+### 11.2 Inbox + Contacts V2 — Operational Timeline (Fase C de produto, 26/09/2026)
+
+Direção: ~70% Signal Console / ~30% editorial operations. O Inbox lê como **timeline operacional**, não como chat.
+
+- **Sem bolhas esquerda/direita.** Thread é uma lista vertical cronológica sobre uma **spine de 1px** (`border-subtle`). Mensagem simples = tipografia + espaçamento; contêiner (borda) só onde há controle/artefato: opções de quick reply, botão, campos de texto.
+- **Signal Markers com semântica fixa na timeline**: `●` (`trigger`, anel) = evento do lead (comentário, clique, DM); `◆` = lógica/decisão (keyword match, condição); `‖` = espera (delay); `■` = fim de fluxo; `!` = incidente (`danger`, sempre com texto "Falha · …"). Mensagens de automação/humano **não** ganham marker — ficam só sobre a spine. `SEND_MESSAGE`/`PRIVATE_REPLY`/`QUICK_REPLY` não viram linha de engine (já estão em `messages`); `PUBLIC_REPLY` aparece como "Automação · Resposta pública".
+- **Atores** por rótulo, não por lado: lead = `@username` (peso 500), automação = "Automação" (`text-secondary`), humano = "Você" (`signal`, ação de marca).
+- **Conversation list**: avatar (fallback por iniciais — `contacts.avatar_url` ainda é sempre null, sem enrichment), `@username`, prévia, tempo, `Instagram · @conta_receptora`. **Selecionada = Signal Rail 2px `--signal` à esquerda** (+ `surface-1`, `aria-current`). Não lida = ponto + nome em negrito + texto p/ leitor de tela. Manual = marker `‖` + "Manual" em `warning`.
+- **Human Takeover** no header da thread: "Automação ativa" (marker `success`) ou "Operação manual" (`warning-soft` + borda `warning`, marker `‖`) + botão "Reativar automação". Nunca vermelho; estado sempre com texto.
+- **Painel de contexto** (coluna 3 em lg+, `<details>` em md/mobile): Identidade · Contexto (recebido por, primeira interação, última atividade) · Tags · Automação. Runs de automação recolhidas por padrão.
+- **Contacts**: lista com hairline (sem card gigante) e detalhe editorial em seções (Identidade, Tags, Custom fields, Conversas) — títulos de seção em sentence-case, sem ALL CAPS.
+- Datas sempre em `America/Sao_Paulo` (`lib/ui/format.ts`) — o servidor roda em UTC.
+- Componentes: `components/inbox/` (ConversationList, Timeline, ContactContext, TakeoverToggle, MessageComposer, PublicReplyAction, ScrollToEnd), `components/contacts/` (ContactAvatar, ContactRow).
+
 ## 12. Acessibilidade
 
 Navegação por teclado, foco visível, `aria-label` em ícone-só-button, contraste AA, status nunca depende só de cor (sempre símbolo + texto), `prefers-reduced-motion` respeitado, Radix para dialog/menu.

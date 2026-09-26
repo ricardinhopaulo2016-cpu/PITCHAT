@@ -283,7 +283,7 @@ O roadmap anterior (Fase 0–12, com Media Library nas Fases 2–3) está **subs
 |---|---|---|
 | A | Quick Polish | ✅ concluída, validada visualmente em produção pelo Paulo |
 | B | Premium Shell / Signal Desk V2 | ✅ implementada, validada visualmente pelo Paulo |
-| C | Inbox + Contacts V2 | ▶ **próxima fase** (não iniciada) |
+| C | Inbox + Contacts V2 | 🟡 **implementada e em produção, AGUARDANDO validação visual do Paulo** — só vira ✅ após a aprovação dele (ver 13.2) |
 | D | Multi-Instagram | ⏳ futura |
 | E1 | Backend Graph Validator (`validateGraph` autoritativo) | ⏳ futura — vem **antes** de E2 |
 | E2 | Automation Canvas (`@xyflow/react`) | ⏳ futura |
@@ -298,7 +298,19 @@ O roadmap anterior (Fase 0–12, com Media Library nas Fases 2–3) está **subs
 - ✅ Mobile: contexto mínimo de canal no drawer.
 - ⚠️ **Multi-Instagram NÃO está concluído** — o switcher é só a base visual da Fase D.
 
-### 13.2 Fase D — decisão registrada sobre `contacts` (não migrar agora)
+### 13.2 Fase C de produto — Inbox + Contacts V2 (implementada; pendente de validação visual)
+
+Sem migration, sem alteração de schema. Design em `PITCHAT_DESIGN_SYSTEM.md` §11.2. O que mudou:
+
+- **Timeline operacional** (`components/inbox/timeline.tsx`) no lugar de bolhas; `composeTimeline()` em `lib/inbox/repo.ts` compõe comentários + `messages` + sinais de engine.
+- **Sinais de engine na timeline** (a partir de `automation_run_steps`, 2 queries bounded em paralelo): `KEYWORD_MATCH` (incl. "sem correspondência"), `CONDITION` (braço tomado), `DELAY`, `END`, `PUBLIC_REPLY`, e **qualquer step `failed`** (incidente). Deliberadamente **fora**: `SEND_MESSAGE`/`PRIVATE_REPLY`/`QUICK_REPLY` (duplicariam `messages`), tags/campos/HTTP/split. Cobertos por `__tests__/inbox-timeline.test.ts`.
+- DM de automação carrega `messages.type`/`payload` p/ mostrar opções de quick reply e botão.
+- Conversation list com avatar/fallback, conta receptora, rail de 2px, não lida, manual; painel de contexto do contato; Contacts (lista + detalhe) realinhados.
+- **Avatares**: `contacts.avatar_url` é lido, mas nenhuma rotina de enrichment existe (nem foi investigada a capacidade real da Meta) — todos usam fallback de iniciais. Avatar enrichment é decisão futura separada.
+- **Não mexido**: lógica/endpoints de Human Takeover, DM manual e resposta pública; Channel Switcher ("Todos os canais" segue única seleção; Inbox **não** filtra por conta — isso é a Fase D); `contacts` sem migration.
+- `PUBLIC_REPLY` external reply id continua melhoria futura de observabilidade.
+
+### 13.3 Fase D — decisão registrada sobre `contacts` (não migrar agora)
 
 `contacts` **não será migrada agora**. `contacts.platform_user_id` vem do IGSID. Há evidência forte de que o IGSID é escopado por conta profissional, mas a decisão final depende de **tráfego real**. Antes de conectar contas em escala, testar a mesma pessoa interagindo com IG01 e IG02:
 
