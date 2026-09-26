@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { AutomationRunSummary } from "@/lib/inbox/repo";
 import { ContactAvatar } from "@/components/contacts/contact-avatar";
 import { SignalMarker, type SignalMarkerType } from "@/components/icons/pitchat";
-import { formatDate, platformLabel, timeAgo } from "@/lib/ui/format";
+import { formatDateTimeLong, formatLastActivity, platformLabel, timeAgo } from "@/lib/ui/format";
 
 export type InboxContact = {
   id: string;
@@ -75,11 +75,11 @@ export function ContactContext({
           </div>
           <div>
             <dt className="text-xs text-text-muted">Primeira interação</dt>
-            <dd className="text-text">{contact ? formatDate(contact.firstSeenAt) : "—"}</dd>
+            <dd className="text-text">{contact ? formatDateTimeLong(contact.firstSeenAt) : "—"}</dd>
           </div>
           <div>
             <dt className="text-xs text-text-muted">Última atividade</dt>
-            <dd className="text-text">{contact ? `${timeAgo(contact.lastSeenAt)} · ${formatDate(contact.lastSeenAt)}` : "—"}</dd>
+            <dd className="text-text">{contact ? formatLastActivity(contact.lastSeenAt) : "—"}</dd>
           </div>
         </dl>
       </section>

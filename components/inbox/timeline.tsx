@@ -99,6 +99,15 @@ function TimelineRow({ entry, leadName, first, last }: { entry: TimelineEntry; l
   );
 }
 
+/** Só o domínio — a URL completa segue no `title` (tooltip); o rótulo do botão é o protagonista. */
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
+
 function kindLabel(entry: TimelineEntry): string {
   if (entry.actor === "USER") {
     if (entry.channel === "comment") return "Comentário";
@@ -145,9 +154,9 @@ function MessageBlock({ entry, leadName, time }: { entry: TimelineEntry; leadNam
       )}
 
       {entry.button && (
-        <p className="mt-2 inline-flex max-w-full items-center gap-2 rounded-[var(--radius-input)] border border-border px-2.5 py-1 text-xs text-text-secondary">
-          <span className="font-medium text-text">{entry.button.title}</span>
-          <span className="truncate font-mono text-[11px] text-text-muted">{entry.button.url}</span>
+        <p className="mt-2 inline-flex max-w-full items-baseline gap-2 rounded-[var(--radius-input)] border border-border px-2.5 py-1 text-xs" title={entry.button.url}>
+          <span className="shrink-0 font-medium text-text">{entry.button.title}</span>
+          <span className="max-w-[9rem] truncate text-[11px] text-text-muted/80">{hostOf(entry.button.url)}</span>
         </p>
       )}
 

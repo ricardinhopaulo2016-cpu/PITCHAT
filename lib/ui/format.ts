@@ -50,3 +50,17 @@ export function initials(username: string | null): string {
   const clean = (username ?? "").replace(/[^a-zA-Z0-9]/g, "");
   return clean.slice(0, 2).toUpperCase() || "?";
 }
+
+/** `26 set 2026 · 16:36` — data por extenso curta, sempre em America/Sao_Paulo. */
+export function formatDateTimeLong(iso: string): string {
+  const d = new Date(iso);
+  const parts = new Intl.DateTimeFormat("pt-BR", { day: "numeric", month: "short", year: "numeric", timeZone: TZ }).formatToParts(d);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  return `${get("day")} ${get("month").replace(".", "")} ${get("year")} · ${formatClock(iso)}`;
+}
+
+/** `há 4h · 26 set 2026 · 16:36` (ou `agora · …` quando < 1 min). */
+export function formatLastActivity(iso: string): string {
+  const ago = timeAgo(iso);
+  return `${ago === "agora" ? "agora" : `há ${ago}`} · ${formatDateTimeLong(iso)}`;
+}
