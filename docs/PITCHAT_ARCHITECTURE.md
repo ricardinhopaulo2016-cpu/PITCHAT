@@ -284,7 +284,7 @@ O roadmap anterior (Fase 0–12, com Media Library nas Fases 2–3) está **subs
 | A | Quick Polish | ✅ concluída, validada visualmente em produção pelo Paulo |
 | B | Premium Shell / Signal Desk V2 | ✅ implementada, validada visualmente pelo Paulo |
 | C | Inbox + Contacts V2 | ✅ **concluída e validada visualmente pelo Paulo em produção** (HEAD validado `460cd6d`; ver 13.2) |
-| D | Multi-Instagram | 🟡 **em andamento** — D0: código preparado p/ 2ª conta, ⏳ aguardando teste E2E IG01 × IG02 (ver 13.4). D1 (filtro) e demais **não iniciados**; Fase D **não concluída** |
+| D | Multi-Instagram | 🟡 **em andamento** — **D0 ✅ concluída e validada E2E** (2+ contas por profile + teste de identidade IG01 × IG02: A ≠ B; ver 13.3/13.4). **D1 (filtro por canal) ⏳ não iniciada**; Fase D **não concluída** |
 | E1 | Backend Graph Validator (`validateGraph` autoritativo) | ⏳ futura — vem **antes** de E2 |
 | E2 | Automation Canvas (`@xyflow/react`) | ⏳ futura |
 | F | YouTube | ⏳ futura |
@@ -311,16 +311,22 @@ Fechada em 26/09/2026 — tests, lint, build e Vercel ok; Inbox V2, Contact Deta
 - `PUBLIC_REPLY` external reply id continua melhoria futura de observabilidade.
 - **Observação não bloqueante**: a row de conversa do Contact Detail mostra "Sem mensagens ainda" quando só há comentário e nenhuma DM; uma copy mais precisa ("Sem DM ainda") pode ser avaliada no futuro.
 
-### 13.3 Fase D — decisão registrada sobre `contacts` (não migrar agora)
+### 13.3 Fase D — decisão sobre `contacts`: ✅ confirmada por E2E real, NÃO migrar
 
-`contacts` **não será migrada agora**. `contacts.platform_user_id` vem do IGSID. Há evidência forte de que o IGSID é escopado por conta profissional, mas a decisão final depende de **tráfego real**. Antes de conectar contas em escala, testar a mesma pessoa interagindo com IG01 e IG02:
+**Resultado do teste real (27/09/2026, produção): A ≠ B.** A mesma conta pessoal (`paulo.cadoxd`) comentou `PITCHAT-IDTEST-A` na IG01 `@papagaio_milhas` e `PITCHAT-IDTEST-B` na IG02 `@dodo_passagens`, e o webhook persistiu **IGSIDs diferentes**: A = `1120289020330867` (contact `e9f4c587-…`, conversation `9d6b60f8-…`), B = `1813191480038393` (contact `7d8ef491-…`, conversation `7857d3a6-…`). Confirmado: dois contacts distintos (mesmo username, `platform_user_id` diferente); conversations separadas por `social_account_id`; comentários ligados às contas receptoras corretas; webhook da Dodo processado normalmente; **nenhuma colisão** em `unique(workspace_id, platform, platform_user_id)`.
+
+**Decisão oficial do V1:** NÃO migrar `contacts`, NÃO adicionar `social_account_id` a `contacts`, NÃO criar person-resolution, NÃO unificar contacts por username. **Semântica: Contact = identidade do usuário naquele canal/contexto Instagram**; a mesma pessoa real pode gerar contacts diferentes em contas profissionais receptoras diferentes — isso é esperado e correto.
+
+**Nota de UX futura (D1+):** em "Todos os canais", o mesmo username pode aparecer em mais de uma linha (IGSIDs diferentes). **Isso não deve ser tratado como duplicata automaticamente.**
+
+(Plano original do teste, mantido como histórico) Antes de conectar contas em escala, testar a mesma pessoa interagindo com IG01 e IG02:
 
 - IG01 → `platform_user_id` A, IG02 → `platform_user_id` B, com **A ≠ B**: o schema atual já mantém identidades distintas — nada a migrar.
 - **A == B**: reavaliar o schema de `contacts`.
 
 **Nenhuma migration antes desse teste.** (Não é um bug conhecido; é uma dúvida a validar.)
 
-### 13.4 Fase D0 — Multi-Instagram: código seguro para 2+ contas (⏳ aguardando teste E2E IG01 × IG02)
+### 13.4 Fase D0 — Multi-Instagram: código seguro para 2+ contas (✅ concluída e validada E2E em 27/09/2026)
 
 **Semântica adotada (confirmada contra schema + engine, sem contradição estrutural):**
 
@@ -336,6 +342,10 @@ Fechada em 26/09/2026 — tests, lint, build e Vercel ok; Inbox V2, Contact Deta
 - Editor de automação lista as contas do profile e diz explicitamente que a automação vale para todas; diálogo de publicação idem. Lista de Automations: coluna "Perfil" + nº de contas conectadas.
 - ChannelSwitcher, Inbox e Contacts **inalterados** (já usam `social_account_id`; switcher lista todas as contas, "Todos os canais" segue única seleção funcional).
 
-**Contacts**: sem migration, `unique(workspace_id, platform, platform_user_id)` intacto. **Pendente (E2E real, obrigatório):** Paulo conecta IG02; a **mesma conta pessoal** comenta em IG01 (`PITCHAT-IDTEST-A`) e IG02 (`PITCHAT-IDTEST-B`); comparar `contacts.platform_user_id` real persistido: **A ≠ B** → schema atual ok, segue D1 (filtro); **A == B** → parar e trazer linhas reais + proposta mínima de migration para o Paulo decidir.
+**Contacts**: sem migration, `unique(workspace_id, platform, platform_user_id)` intacto. **Teste E2E de identidade: ✅ executado — A ≠ B (ver 13.3).** (Plano original do teste:) Paulo conecta IG02; a **mesma conta pessoal** comenta em IG01 (`PITCHAT-IDTEST-A`) e IG02 (`PITCHAT-IDTEST-B`); comparar `contacts.platform_user_id` real persistido: **A ≠ B** → schema atual ok, segue D1 (filtro); **A == B** → parar e trazer linhas reais + proposta mínima de migration para o Paulo decidir.
 
-**Investigação do OAuth da 2ª conta (Dodo) — observabilidade primeiro (26/09/2026):** a 1ª tentativa de adicionar a IG02 falhou em produção com "Falha no exchange pra long-lived token: HTTP 400" e o body real da Meta era descartado. **Causa ainda desconhecida — não inferir.** Implementado apenas diagnóstico: `InstagramOAuthError` (`lib/meta/oauth-errors.ts`) preserva `httpStatus`, `metaCode`, `metaSubcode`, `metaType`, `fbtrace_id` e a mensagem da Meta (com credenciais redigidas); o callback loga isso **server-side** (JSON `oauth_callback_failed`, nos logs da Vercel) e põe na URL só um `detail` categorizado (ex.: `long_lived_exchange_failed_http400_code100_sub33`) — nunca a mensagem técnica. Nenhum token, `code`, app secret ou URL de request é logado. Nenhuma mudança de endpoint/scopes/credenciais/schema; `decideAccountLink` continua antes de qualquer efeito colateral.
+**Investigação do OAuth da 2ª conta (Dodo) — observabilidade primeiro (26/09/2026):** a 1ª tentativa de adicionar a IG02 falhou em produção com "Falha no exchange pra long-lived token: HTTP 400" e o body real da Meta era descartado. **Causa então desconhecida (resolvida neste caso por App Role — ver evidência ao final desta seção).** Implementado apenas diagnóstico: `InstagramOAuthError` (`lib/meta/oauth-errors.ts`) preserva `httpStatus`, `metaCode`, `metaSubcode`, `metaType`, `fbtrace_id` e a mensagem da Meta (com credenciais redigidas); o callback loga isso **server-side** (JSON `oauth_callback_failed`, nos logs da Vercel) e põe na URL só um `detail` categorizado (ex.: `long_lived_exchange_failed_http400_code100_sub33`) — nunca a mensagem técnica. Nenhum token, `code`, app secret ou URL de request é logado. Nenhuma mudança de endpoint/scopes/credenciais/schema; `decideAccountLink` continua antes de qualquer efeito colateral.
+
+**Evidência E2E do teste de App Role (27/09/2026) — observada, sem generalizar:** a conta profissional `@dodo_passagens`, **sem App Role no app**, falhou no exchange long-lived com **HTTP 400 / code 100 / `IGApiException` / "Unsupported request - method type: get"** (subcode null; `fbtrace_id` no log da Vercel). **Depois de aceitar "Testador do Instagram"**, o **mesmo fluxo OAuth passou** e a conta foi conectada (`external_account_id` `17841478404164306`, mesmo profile da IG01). Isso mostra apenas que **o App Role resolveu ESTE caso de Standard Access**; **não** é prova de que Tech Provider Verification seja a causa geral, e **não** foi bug de GET/POST nem do D0 (o método/endpoint do `ig_exchange_token` não foi alterado). Implicação prática: contas sem App Role podem não conectar sob Standard Access — caminho de Advanced Access/App Review a auditar antes de conectar contas de terceiros.
+
+**Status D0 (27/09/2026): ✅ CONCLUÍDA E VALIDADA E2E.** Fase D: 🟡 em andamento. **D1 (filtro por canal): ⏳ não iniciada.**
