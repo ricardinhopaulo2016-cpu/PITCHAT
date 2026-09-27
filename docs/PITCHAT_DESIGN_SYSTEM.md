@@ -131,7 +131,7 @@ mostra contas reais de `social_accounts` — "Todos os canais" é a única
 seleção de verdade enquanto não existir filtragem multi-conta no produto;
 contas individuais aparecem como contexto, não como ação clicável.
 
-### 11.2 Inbox + Contacts V2 — Operational Timeline (Fase C de produto, 26/09/2026)
+### 11.2 Inbox + Contacts V2 — Operational Timeline (Fase C de produto, 26/09/2026 — ✅ validada visualmente pelo Paulo em produção)
 
 Direção: ~70% Signal Console / ~30% editorial operations. O Inbox lê como **timeline operacional**, não como chat.
 
