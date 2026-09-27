@@ -10,6 +10,7 @@ import {
 } from "@/lib/meta/oauth";
 import { encryptToken } from "@/lib/meta/token-crypto";
 import { decideAccountLink, type LinkableAccount } from "@/lib/meta/account-link";
+import { logOAuthCallbackFailure, toSafeErrorDetail } from "@/lib/meta/oauth-errors";
 
 export const runtime = "nodejs";
 
@@ -127,6 +128,9 @@ export async function GET(request: Request) {
 
     return redirectToSocialAccounts(webhookSubscribed ? "connected" : "error", webhookSubscribed ? undefined : "webhook_subscription_failed");
   } catch (err) {
-    return redirectToSocialAccounts("error", err instanceof Error ? err.message : "unknown_error");
+    // Diagnóstico completo SÓ no log do servidor (sem credenciais); a URL leva
+    // apenas um identificador categorizado — nunca a mensagem técnica da Meta.
+    logOAuthCallbackFailure(err, [config.instagramAppSecret, code]);
+    return redirectToSocialAccounts("error", toSafeErrorDetail(err));
   }
 }

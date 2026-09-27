@@ -1,6 +1,7 @@
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { getGraphApiVersion } from "./api-version";
 import { MetaApiError, classifyMetaError } from "./client";
+import { buildInstagramOAuthError } from "./oauth-errors";
 
 /**
  * Instagram API with Instagram Login — fluxo OAuth completo. Endpoints e
@@ -124,7 +125,11 @@ export async function exchangeForLongLivedToken(
   url.searchParams.set("access_token", shortLivedToken);
 
   const res = await fetch(url.toString());
-  if (!res.ok) throw new Error(`Falha no exchange pra long-lived token: HTTP ${res.status}`);
+  // Erro estruturado (status/code/subcode/type/mensagem da Meta, já sem
+  // credenciais) — antes só "HTTP 400" chegava e o body real era descartado.
+  if (!res.ok) {
+    throw await buildInstagramOAuthError("instagram_long_lived_token_exchange", res, [shortLivedToken, config.instagramAppSecret]);
+  }
 
   const json = await res.json();
   return {
