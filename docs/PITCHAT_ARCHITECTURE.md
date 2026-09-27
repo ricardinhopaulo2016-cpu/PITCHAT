@@ -284,7 +284,7 @@ O roadmap anterior (Fase 0–12, com Media Library nas Fases 2–3) está **subs
 | A | Quick Polish | ✅ concluída, validada visualmente em produção pelo Paulo |
 | B | Premium Shell / Signal Desk V2 | ✅ implementada, validada visualmente pelo Paulo |
 | C | Inbox + Contacts V2 | ✅ **concluída e validada visualmente pelo Paulo em produção** (HEAD validado `460cd6d`; ver 13.2) |
-| D | Multi-Instagram | 🟡 **em andamento** — **D0 ✅ concluída e validada E2E** (2+ contas por profile + teste de identidade IG01 × IG02: A ≠ B; ver 13.3/13.4). **D1 (filtro por canal) ⏳ não iniciada**; Fase D **não concluída** |
+| D | Multi-Instagram | 🟡 **em andamento** — **D0 ✅ concluída e validada E2E**; **D1 (filtro por canal) 🟡 implementada, AGUARDANDO validação visual/E2E do Paulo** (ver 13.3/13.4/13.5); Fase D **não concluída** |
 | E1 | Backend Graph Validator (`validateGraph` autoritativo) | ⏳ futura — vem **antes** de E2 |
 | E2 | Automation Canvas (`@xyflow/react`) | ⏳ futura |
 | F | YouTube | ⏳ futura |
@@ -348,4 +348,21 @@ Fechada em 26/09/2026 — tests, lint, build e Vercel ok; Inbox V2, Contact Deta
 
 **Evidência E2E do teste de App Role (27/09/2026) — observada, sem generalizar:** a conta profissional `@dodo_passagens`, **sem App Role no app**, falhou no exchange long-lived com **HTTP 400 / code 100 / `IGApiException` / "Unsupported request - method type: get"** (subcode null; `fbtrace_id` no log da Vercel). **Depois de aceitar "Testador do Instagram"**, o **mesmo fluxo OAuth passou** e a conta foi conectada (`external_account_id` `17841478404164306`, mesmo profile da IG01). Isso mostra apenas que **o App Role resolveu ESTE caso de Standard Access**; **não** é prova de que Tech Provider Verification seja a causa geral, e **não** foi bug de GET/POST nem do D0 (o método/endpoint do `ig_exchange_token` não foi alterado). Implicação prática: contas sem App Role podem não conectar sob Standard Access — caminho de Advanced Access/App Review a auditar antes de conectar contas de terceiros.
 
-**Status D0 (27/09/2026): ✅ CONCLUÍDA E VALIDADA E2E.** Fase D: 🟡 em andamento. **D1 (filtro por canal): ⏳ não iniciada.**
+**Status D0 (27/09/2026): ✅ CONCLUÍDA E VALIDADA E2E.** Fase D: 🟡 em andamento. **D1 (filtro por canal): 🟡 implementada — aguardando validação visual/E2E do Paulo (ver 13.5). Não marcar D1 ✅ automaticamente.**
+
+### 13.5 Fase D1 — Channel Switcher vira filtro real (🟡 implementada, aguardando validação do Paulo)
+
+**Modelo canônico**: a URL é a única fonte de verdade — sem `channel` = "Todos os canais"; `?channel=<social_accounts.id>` = canal específico. `?channel=all` é canonicalizado (redirect) pra ausência do param. Nunca cookie/localStorage/Context. `lib/channel/repo.ts` (`resolveChannel`/`listWorkspaceChannelAccounts`/`groupChannelAccountsByProfile`/`normalizeChannelParam`) e `lib/channel/url.ts` (hrefs) são a base; `lib/channel/deep-link.ts` decide a regra de conflito conversation×channel do Inbox (puro, testado).
+
+- **Channel Switcher**: mesmo componente/Radix de antes, agora cada item é um `<Link>` real (nunca estado client-only) — preserva SSR/deep link/refresh/nova aba/Back-Forward. Contas agrupadas por profile (heading discreto, não accordion). Trocar de canal manualmente remove `conversation` da URL. Em `/dashboard/automations*` vira contextual ("Escopo por perfil", não filtra nada — automação é do profile).
+- **Channel inválido nunca amplia o escopo**: Inbox/Contacts/Health mostram "Canal não encontrado ou não está mais conectado." + "Ver todos os canais", em vez de silenciosamente cair pra "todos".
+- **Inbox**: `listConversations` filtra por `social_account_id` **na query, antes do `.limit()`**. Regra de deep link: `conversation` válida sempre vence um `channel` diferente (canonicaliza a URL); sem `channel`, mantém "Todos os canais". `ConversationRow` preserva `channel` ao abrir a thread. `MessageComposer` mostra "Respondendo como @conta" sempre que há conversation selecionada.
+- **Contacts**: `listContacts` filtra por contatos com conversation naquele `social_account_id` (2 queries, antes do limite); A≠B (D0) nunca é mesclado — contas diferentes seguem linhas distintas mesmo com o mesmo username. `ContactRow`/Contact Detail preservam o `channel` de ida e volta; o link de cada conversation pro Inbox usa `channel=<conversation.social_account_id>`, nunca o canal navegado.
+- **Health — filtro honesto por dataset** (nunca inventa atribuição que os dados não sustentam): Instagram Accounts e Webhook Events (`social_account_id`) e Automation Runs (via `conversation_id` das conversations do canal) filtram de verdade; Token Maintenance filtra por `jobs.payload->>socialAccountId`; **QStash/Jobs permanece GLOBAL e rotulado como tal** quando um canal está ativo (delay/retry/webhook não gravam `social_account_id` em `jobs` hoje); Incident Rail só inclui incidentes de job atribuíveis ao canal selecionado (usa a mesma query escopada de Token Maintenance), nunca de outra conta.
+- **Automations**: sem filtro (automação é do profile, não da conta) — nenhuma mudança nas páginas, só o Switcher fica contextual.
+- **Social Accounts**: sem filtro (gerencia o conjunto de canais); `channel` na URL é ignorado pela página.
+- **Navegação**: Rail/MobileSidebar propagam `channel` (só esse param) ao trocar de seção — nunca desaparece ao clicar no Rail.
+- **Testes novos**: `__tests__/channel-repo.test.ts`, `channel-deep-link.test.ts`, `channel-url.test.ts`, `channel-filter-repo.test.ts` (30 testes) — cobrem resolução/validação de channel, a regra de deep link, os helpers de URL e, principalmente, que o filtro do Inbox/Contacts acontece **antes do limite** (fixtures deliberadamente colocam o canal filtrado fora do "top N global").
+- Sem migration, sem coluna nova, sem mudança em `contacts`.
+
+**Status: D1 implementada. NÃO fechar como concluída** — falta a validação visual/E2E do Paulo (troca de canal, deep links, Health por conta) em produção.

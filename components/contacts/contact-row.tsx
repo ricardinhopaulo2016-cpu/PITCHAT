@@ -6,14 +6,16 @@ import { platformLabel, timeAgo } from "@/lib/ui/format";
 const TAGS_SHOWN = 3;
 
 /** Linha de contato — lista operacional, sem card gigante: hairline, hover e foco no padrão Signal Desk. */
-export function ContactRow({ contact: c }: { contact: ContactListItem }) {
+export function ContactRow({ contact: c, channelId }: { contact: ContactListItem; channelId?: string | null }) {
   const name = c.username ? `@${c.username}` : c.id.slice(0, 8);
   const where = c.socialAccountUsername ? `${platformLabel(c.platform)} · @${c.socialAccountUsername}` : `${platformLabel(c.platform)} · sem conversa ainda`;
   const extraTags = c.tags.length - TAGS_SHOWN;
+  // Preserva o Channel Filter ativo ao abrir o Contact Detail (D1).
+  const href = channelId ? `/dashboard/contacts/${c.id}?channel=${channelId}` : `/dashboard/contacts/${c.id}`;
 
   return (
     <Link
-      href={`/dashboard/contacts/${c.id}`}
+      href={href}
       className="flex items-center gap-3 px-4 py-3 transition-colors duration-[var(--motion-fast)] hover:bg-surface-1 md:px-5"
     >
       <ContactAvatar username={c.username} avatarUrl={c.avatarUrl} />

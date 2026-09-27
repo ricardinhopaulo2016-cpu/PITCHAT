@@ -14,14 +14,34 @@ export type ContactListItem = {
   tags: string[];
 };
 
-/** Lista contatos do workspace — 3 queries fixas (contacts, conversations+social_account, contact_tags), nunca N+1. */
-export async function listContacts(admin: SupabaseClient, workspaceId: string): Promise<ContactListItem[]> {
-  const { data: contacts } = await admin
+/** Lista contatos do workspace — 3-4 queries fixas (contacts, [channel scoping], conversations+social_account, contact_tags), nunca N+1. */
+export async function listContacts(
+  admin: SupabaseClient,
+  workspaceId: string,
+  opts: { socialAccountId?: string | null } = {}
+): Promise<ContactListItem[]> {
+  let query = admin
     .from("contacts")
     .select("id, username, avatar_url, platform, first_seen_at, last_seen_at")
-    .eq("workspace_id", workspaceId)
-    .order("last_seen_at", { ascending: false })
-    .limit(LIST_LIMIT);
+    .eq("workspace_id", workspaceId);
+
+  // Filtro do Channel Switcher (D1): resolve pra "contatos com >=1 conversation
+  // nesse social_account" ANTES do .limit() — nunca buscar os 100 mais
+  // recentes de todo o workspace e filtrar depois em JS (cortaria contatos
+  // reais do canal que não estivessem entre os 100 mais recentes globais).
+  if (opts.socialAccountId) {
+    const { data: channelConversations } = await admin
+      .from("conversations")
+      .select("contact_id")
+      .eq("workspace_id", workspaceId)
+      .eq("social_account_id", opts.socialAccountId)
+      .limit(LIST_LIMIT);
+    const channelContactIds = [...new Set((channelConversations ?? []).map((c) => c.contact_id as string))];
+    if (channelContactIds.length === 0) return []; // canal sem nenhum contato ainda — nunca ambia pra "todos"
+    query = query.in("id", channelContactIds);
+  }
+
+  const { data: contacts } = await query.order("last_seen_at", { ascending: false }).limit(LIST_LIMIT);
 
   if (!contacts || contacts.length === 0) return [];
   const contactIds = contacts.map((c) => c.id as string);
@@ -63,7 +83,14 @@ export async function listContacts(admin: SupabaseClient, workspaceId: string): 
 }
 
 export type ContactDetail = ContactListItem & {
-  conversations: { id: string; socialAccountUsername: string | null; lastMessageAt: string | null; automationEnabled: boolean }[];
+  conversations: {
+    id: string;
+    /** Pra montar o link de volta pro Inbox com o channel certo (D1) — nunca inferir pelo username. */
+    socialAccountId: string;
+    socialAccountUsername: string | null;
+    lastMessageAt: string | null;
+    automationEnabled: boolean;
+  }[];
   customFields: { key: string; label: string; value: unknown }[];
 };
 
@@ -80,7 +107,7 @@ export async function loadContactDetail(admin: SupabaseClient, contactId: string
   const [{ data: conversations }, { data: contactTags }, { data: customFieldValues }] = await Promise.all([
     admin
       .from("conversations")
-      .select("id, last_message_at, automation_enabled, social_account:social_accounts(username)")
+      .select("id, social_account_id, last_message_at, automation_enabled, social_account:social_accounts(username)")
       .eq("contact_id", contactId)
       .order("updated_at", { ascending: false }),
     admin.from("contact_tags").select("tags(name)").eq("contact_id", contactId),
@@ -98,6 +125,7 @@ export async function loadContactDetail(admin: SupabaseClient, contactId: string
     tags: (contactTags ?? []).map((t) => (t.tags as unknown as { name: string } | null)?.name).filter((n): n is string => !!n),
     conversations: (conversations ?? []).map((c) => ({
       id: c.id as string,
+      socialAccountId: c.social_account_id as string,
       socialAccountUsername: (c.social_account as unknown as { username: string | null } | null)?.username ?? null,
       lastMessageAt: c.last_message_at as string | null,
       automationEnabled: c.automation_enabled !== false,

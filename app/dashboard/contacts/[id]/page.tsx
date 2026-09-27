@@ -8,6 +8,7 @@ import { loadContactDetail } from "@/lib/contacts/repo";
 import { ContactAvatar } from "@/components/contacts/contact-avatar";
 import { SignalMarker } from "@/components/icons/pitchat";
 import { formatDateTimeLong, formatLastActivity, platformLabel, timeAgo } from "@/lib/ui/format";
+import { buildHref } from "@/lib/channel/url";
 
 export const dynamic = "force-dynamic";
 
@@ -32,8 +33,15 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-export default async function ContactDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ContactDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ channel?: string }>;
+}) {
   const { id } = await params;
+  const { channel: channelParam } = await searchParams;
   const auth = await getAuthContext();
   if (!auth) redirect("/login");
 
@@ -44,10 +52,13 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
   if (!contact) notFound();
 
   const name = contact.username ? `@${contact.username}` : contact.id.slice(0, 8);
+  // Preserva o Channel Filter que trouxe até aqui (D1) — "Contacts" volta pra
+  // mesma visão filtrada, nunca amplia o escopo sozinho.
+  const backHref = buildHref("/dashboard/contacts", channelParam ? { channel: channelParam } : {});
 
   return (
     <div className="max-w-2xl px-6 pb-10 pt-7 md:px-8 md:pt-8">
-      <Link href="/dashboard/contacts" className="mb-5 inline-flex items-center gap-1 text-sm text-text-secondary hover:text-text">
+      <Link href={backHref} className="mb-5 inline-flex items-center gap-1 text-sm text-text-secondary hover:text-text">
         <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" /> Contacts
       </Link>
 
@@ -104,7 +115,7 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
             {contact.conversations.map((c) => (
               <li key={c.id}>
                 <Link
-                  href={`/dashboard/inbox?conversation=${c.id}`}
+                  href={`/dashboard/inbox?channel=${c.socialAccountId}&conversation=${c.id}`}
                   className="group flex items-center justify-between gap-3 px-2 py-3 transition-colors duration-[var(--motion-fast)] hover:bg-surface-1"
                 >
                   <span className="min-w-0">

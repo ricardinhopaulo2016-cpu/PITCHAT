@@ -11,7 +11,16 @@ import { platformLabel, timeAgo } from "@/lib/ui/format";
  * (não só background). Não lida = ponto + nome em negrito + texto pra leitor
  * de tela; manual = marker de espera + palavra — nunca só cor.
  */
-export function ConversationList({ conversations, selectedId }: { conversations: ConversationListItem[]; selectedId?: string }) {
+export function ConversationList({
+  conversations,
+  selectedId,
+  channelId,
+}: {
+  conversations: ConversationListItem[];
+  selectedId?: string;
+  /** Channel Filter ativo (D1) — preservado em cada link pra abrir a thread sem sair do canal escolhido. */
+  channelId?: string | null;
+}) {
   if (conversations.length === 0) {
     return (
       <div className="p-6">
@@ -24,20 +33,29 @@ export function ConversationList({ conversations, selectedId }: { conversations:
     <ul className="divide-y divide-border-subtle" aria-label="Conversas">
       {conversations.map((c) => (
         <li key={c.id}>
-          <ConversationRow conversation={c} selected={c.id === selectedId} />
+          <ConversationRow conversation={c} selected={c.id === selectedId} channelId={channelId} />
         </li>
       ))}
     </ul>
   );
 }
 
-function ConversationRow({ conversation: c, selected }: { conversation: ConversationListItem; selected: boolean }) {
+function ConversationRow({
+  conversation: c,
+  selected,
+  channelId,
+}: {
+  conversation: ConversationListItem;
+  selected: boolean;
+  channelId?: string | null;
+}) {
   const name = c.contactUsername ? `@${c.contactUsername}` : "Contato";
   const account = c.socialAccountUsername ? `${platformLabel(c.platform)} · @${c.socialAccountUsername}` : platformLabel(c.platform);
+  const href = channelId ? `/dashboard/inbox?channel=${channelId}&conversation=${c.id}` : `/dashboard/inbox?conversation=${c.id}`;
 
   return (
     <Link
-      href={`/dashboard/inbox?conversation=${c.id}`}
+      href={href}
       aria-current={selected ? "true" : undefined}
       className={`relative flex gap-3 px-4 py-3 transition-colors duration-[var(--motion-fast)] hover:bg-surface-1 ${selected ? "bg-surface-1" : ""}`}
     >

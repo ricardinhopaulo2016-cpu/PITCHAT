@@ -12,7 +12,14 @@ import { useToast } from "@/components/ui/toast";
  * real da Meta aparece sanitizado abaixo do campo, nunca um toast genérico
  * escondendo o motivo.
  */
-export function MessageComposer({ conversationId }: { conversationId: string }) {
+export function MessageComposer({
+  conversationId,
+  socialAccountUsername,
+}: {
+  conversationId: string;
+  /** Conta que vai enviar a mensagem — proteção operacional (D1): sempre visível, mesmo em "Todos os canais". */
+  socialAccountUsername: string | null;
+}) {
   const router = useRouter();
   const toast = useToast();
   const [text, setText] = useState("");
@@ -42,6 +49,9 @@ export function MessageComposer({ conversationId }: { conversationId: string }) 
 
   return (
     <div className="flex flex-col gap-2 border-t border-border-subtle px-5 py-3">
+      <p className="text-[11px] text-text-muted">
+        Respondendo como {socialAccountUsername ? `@${socialAccountUsername}` : "conta não identificada"}
+      </p>
       <Textarea
         rows={2}
         aria-label="Mensagem manual"

@@ -4,7 +4,11 @@ import { ChevronLeft } from "lucide-react";
 import { getAuthContext } from "@/lib/auth/session";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { listConversations, loadConversationForWorkspace, loadConversationTimeline } from "@/lib/inbox/repo";
+import { resolveChannel } from "@/lib/channel/repo";
+import { resolveConversationChannelParam } from "@/lib/channel/deep-link";
+import { buildHref } from "@/lib/channel/url";
 import { PageHeader } from "@/components/app-shell/page-header";
+import { EmptyState } from "@/components/ui/empty-state";
 import { ContactAvatar } from "@/components/contacts/contact-avatar";
 import { ConversationList } from "@/components/inbox/conversation-list";
 import { Timeline } from "@/components/inbox/timeline";
@@ -15,8 +19,12 @@ import { platformLabel } from "@/lib/ui/format";
 
 export const dynamic = "force-dynamic";
 
-export default async function InboxPage({ searchParams }: { searchParams: Promise<{ conversation?: string }> }) {
-  const { conversation: conversationId } = await searchParams;
+export default async function InboxPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ conversation?: string; channel?: string }>;
+}) {
+  const { conversation: conversationId, channel: channelParam } = await searchParams;
 
   const auth = await getAuthContext();
   if (!auth) redirect("/login");
@@ -24,13 +32,53 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
   const admin = getSupabaseAdminClient();
   if (!admin) redirect("/setup");
 
-  // listConversations (coluna 1) e loadConversationForWorkspace (a conversa
-  // selecionada, se houver) não dependem uma da outra — só de
-  // auth.workspace.id/conversationId, já resolvidos. Paraleliza (reauditoria
-  // HEAD 24/09/2026).
+  // Precisa saber ANTES de decidir o channel: se `conversation` for válida,
+  // ela sempre vence sobre um `channel` diferente na URL (deep link — ver
+  // lib/channel/deep-link.ts).
+  const selectedPreliminary = conversationId ? await loadConversationForWorkspace(admin, conversationId, auth.workspace.id) : null;
+
+  const decision = resolveConversationChannelParam(channelParam, selectedPreliminary?.social_account_id ?? null);
+  if (decision.action === "redirect") {
+    const qs = new URLSearchParams({ channel: decision.channelId });
+    if (conversationId) qs.set("conversation", conversationId);
+    redirect(`/dashboard/inbox?${qs.toString()}`);
+  }
+
+  const channelId = decision.channelId;
+
+  // Channel vindo da própria conversation (decision.source === "conversation")
+  // não precisa de outra validação — é o social_account real dela. Só um
+  // channel digitado/colado na URL (source "url") pode ser inválido/revoked.
+  if (channelId && decision.source === "url") {
+    const channel = await resolveChannel(admin, auth.workspace.id, channelId);
+    if (!channel) {
+      return (
+        <>
+          <PageHeader title="Inbox" description="Conversas reais com contatos do Instagram." />
+          <div className="px-6 pb-10 md:px-8">
+            <EmptyState
+              title="Canal não encontrado ou não está mais conectado."
+              description="A conta selecionada não existe mais neste workspace, ou foi desconectada. Nenhum dado foi ampliado pra outro canal automaticamente."
+              action={
+                <Link
+                  href="/dashboard/inbox"
+                  className="inline-flex h-9 items-center justify-center rounded-[var(--radius-button)] bg-signal px-3.5 text-sm font-medium text-signal-on transition-colors duration-[var(--motion-fast)] hover:bg-signal-hover"
+                >
+                  Ver todos os canais
+                </Link>
+              }
+            />
+          </div>
+        </>
+      );
+    }
+  }
+
+  // listConversations (coluna 1) e o `selected` (já resolvido acima) não
+  // dependem um do outro — paraleliza (reauditoria HEAD 24/09/2026).
   const [conversations, selected] = await Promise.all([
-    listConversations(admin, auth.workspace.id),
-    conversationId ? loadConversationForWorkspace(admin, conversationId, auth.workspace.id) : Promise.resolve(null),
+    listConversations(admin, auth.workspace.id, { socialAccountId: channelId }),
+    Promise.resolve(selectedPreliminary),
   ]);
 
   let timeline: Awaited<ReturnType<typeof loadConversationTimeline>>["timeline"] = [];
@@ -69,6 +117,8 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
 
   const lastEntry = timeline[timeline.length - 1];
   const context = <ContactContext contact={contact} receivedBy={selected?.socialAccountUsername ?? null} tags={tags} automationRuns={automationRuns} />;
+  // Volta pra lista sem perder o channel ativo.
+  const backHref = buildHref("/dashboard/inbox", channelId ? { channel: channelId } : {});
 
   return (
     <>
@@ -77,7 +127,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
       <div className="grid h-[calc(100dvh-14rem)] min-h-[28rem] grid-cols-1 overflow-hidden border-t border-border-subtle md:grid-cols-[300px_minmax(0,1fr)] lg:grid-cols-[300px_minmax(0,1fr)_300px] 2xl:grid-cols-[340px_minmax(0,1fr)_340px]">
         {/* Coluna 1 — lista de conversas */}
         <div className={`min-h-0 flex-col overflow-y-auto border-border-subtle md:flex md:border-r ${conversationId ? "hidden" : "flex"}`}>
-          <ConversationList conversations={conversations} selectedId={selected?.id} />
+          <ConversationList conversations={conversations} selectedId={selected?.id} channelId={channelId} />
         </div>
 
         {/* Coluna 2 — thread da conversa */}
@@ -90,7 +140,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
             <>
               <header className="flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border-subtle px-5 py-3">
                 <div className="flex min-w-0 items-center gap-3">
-                  <Link href="/dashboard/inbox" aria-label="Voltar para as conversas" className="-ml-1 p-1 text-text-secondary hover:text-text md:hidden">
+                  <Link href={backHref} aria-label="Voltar para as conversas" className="-ml-1 p-1 text-text-secondary hover:text-text md:hidden">
                     <ChevronLeft className="h-4 w-4" aria-hidden="true" />
                   </Link>
                   <ContactAvatar username={contact?.username ?? null} avatarUrl={contact?.avatarUrl} />
@@ -114,7 +164,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
               </div>
 
               <div className="shrink-0">
-                <MessageComposer conversationId={selected.id} />
+                <MessageComposer conversationId={selected.id} socialAccountUsername={selected.socialAccountUsername} />
 
                 {/* Contexto em mobile/tablet — disclosure simples via <details>, sem JS extra. Em lg+ vira a 3ª coluna fixa. */}
                 <details className="border-t border-border-subtle lg:hidden">

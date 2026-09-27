@@ -25,15 +25,23 @@ export type ConversationListItem = {
  * nenhuma automação ainda ter respondido) — pega o que for mais recente
  * entre os dois, nunca inventa uma prévia genérica.
  */
-export async function listConversations(admin: SupabaseClient, workspaceId: string): Promise<ConversationListItem[]> {
-  const { data: conversations } = await admin
+export async function listConversations(
+  admin: SupabaseClient,
+  workspaceId: string,
+  opts: { socialAccountId?: string | null } = {}
+): Promise<ConversationListItem[]> {
+  let query = admin
     .from("conversations")
     .select(
       "id, contact_id, automation_enabled, last_message_at, last_read_at, contact:contacts(username, avatar_url, platform), social_account:social_accounts(username)"
     )
-    .eq("workspace_id", workspaceId)
-    .order("last_message_at", { ascending: false, nullsFirst: false })
-    .limit(LIST_LIMIT);
+    .eq("workspace_id", workspaceId);
+  // Filtro do Channel Switcher (D1) — SEMPRE na query, antes do .limit(): nunca
+  // buscar os 50 mais recentes de todos os canais e filtrar depois em JS
+  // (isso cortaria conversas reais do canal escolhido que não estivessem
+  // entre as 50 mais recentes globais).
+  if (opts.socialAccountId) query = query.eq("social_account_id", opts.socialAccountId);
+  const { data: conversations } = await query.order("last_message_at", { ascending: false, nullsFirst: false }).limit(LIST_LIMIT);
 
   if (!conversations || conversations.length === 0) return [];
 

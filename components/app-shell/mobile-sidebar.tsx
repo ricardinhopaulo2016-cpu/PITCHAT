@@ -1,15 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
-import { Menu, X } from "lucide-react";
+import { Menu, X, Check } from "lucide-react";
 import { ChannelIcon, PitchatMark, PitchatWordmark } from "@/components/icons/pitchat";
 import { NAV_ITEMS } from "./nav-items";
 import { LogoutButton } from "@/app/dashboard/logout-button";
 import { SoundToggle } from "@/components/ui/sound-toggle";
 import type { ChannelSwitcherAccount } from "./channel-switcher";
+import { groupChannelAccountsByProfile } from "@/lib/channel/repo";
+import { buildChannelSwitchHref, withChannelQuery, CHANNEL_PARAM } from "@/lib/channel/url";
 
 const STATUS_COLOR: Record<string, string> = {
   connected: "var(--success)",
@@ -30,6 +32,11 @@ export function MobileSidebar({
 }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const channelId = searchParams.get(CHANNEL_PARAM);
+  const selected = channelId ? accounts.find((a) => a.id === channelId) : undefined;
+  const groups = groupChannelAccountsByProfile(accounts);
+  const isAutomationsScope = pathname?.startsWith("/dashboard/automations") ?? false;
 
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
@@ -60,22 +67,61 @@ export function MobileSidebar({
 
           <Dialog.Title className="sr-only">Menu de navegação</Dialog.Title>
 
-          {/* Contexto de canal compacto — mesma peça do TopBar desktop, sem
-              switcher completo aqui: espaço é curto, e no mobile a lista de
-              contas em si mora em Social Accounts. */}
-          <div className="flex items-center gap-2 border-b border-border-subtle px-4 py-3 text-xs text-text-muted">
-            <ChannelIcon className="h-3.5 w-3.5" />
-            {accounts.length === 1
-              ? `@${accounts[0].username ?? "conta"}`
-              : accounts.length > 1
-                ? `${accounts.length} contas Instagram`
-                : "Nenhuma conta conectada"}
-            {accounts.length === 1 && (
-              <span className="h-1.5 w-1.5 rounded-full" style={{ background: STATUS_COLOR[accounts[0].status] ?? "var(--text-muted)" }} />
+          {/* Contexto de canal (D1) — mesmo filtro real do TopBar desktop,
+              em versão compacta: "Todos os canais" + contas agrupadas por
+              profile, cada uma um link real pra ?channel=<id>. */}
+          <div className="border-b border-border-subtle px-2.5 py-3">
+            {isAutomationsScope ? (
+              <p className="flex items-center gap-2 px-2 text-xs text-text-muted">
+                <ChannelIcon className="h-3.5 w-3.5" /> Escopo por perfil
+              </p>
+            ) : (
+              <>
+                <p className="px-2 pb-1.5 text-[11px] uppercase tracking-wide text-text-muted">Canal</p>
+                <Link
+                  href={buildChannelSwitchHref(pathname ?? "/dashboard", searchParams, null)}
+                  onClick={() => setOpen(false)}
+                  aria-current={!selected ? "true" : undefined}
+                  className="flex items-center justify-between gap-2 rounded-[var(--radius-panel-sm)] px-2 py-2 text-sm text-text"
+                >
+                  <span className="flex items-center gap-2">
+                    <ChannelIcon className="h-3.5 w-3.5 text-text-muted" /> Todos os canais
+                  </span>
+                  {!selected && <Check className="h-3.5 w-3.5 shrink-0 text-signal" aria-hidden="true" />}
+                </Link>
+                {groups.map((group) => (
+                  <div key={group.profileId} className="mt-1">
+                    <p className="px-2 py-1 text-[11px] uppercase tracking-wide text-text-muted">{group.profileName}</p>
+                    {group.accounts.map((a) => {
+                      const isSelected = a.id === channelId;
+                      return (
+                        <Link
+                          key={a.id}
+                          href={buildChannelSwitchHref(pathname ?? "/dashboard", searchParams, a.id)}
+                          onClick={() => setOpen(false)}
+                          aria-current={isSelected ? "true" : undefined}
+                          className="flex items-center justify-between gap-2 rounded-[var(--radius-panel-sm)] px-2 py-2 text-sm text-text-secondary"
+                        >
+                          <span className="flex min-w-0 items-center gap-2">
+                            <span
+                              aria-hidden="true"
+                              className="h-1.5 w-1.5 shrink-0 rounded-full"
+                              style={{ background: STATUS_COLOR[a.status] ?? "var(--text-muted)" }}
+                            />
+                            <span className="truncate">{a.username ? `@${a.username}` : "Conta sem username"}</span>
+                          </span>
+                          {isSelected && <Check className="h-3.5 w-3.5 shrink-0 text-signal" aria-hidden="true" />}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                ))}
+                {accounts.length === 0 && <p className="px-2 py-1.5 text-xs text-text-muted">Nenhuma conta conectada</p>}
+              </>
             )}
           </div>
 
-          <nav className="flex flex-1 flex-col gap-0.5 px-2.5">
+          <nav className="flex flex-1 flex-col gap-0.5 px-2.5 pt-2">
             {NAV_ITEMS.map((item) => {
               const isActive = pathname === item.href || (item.href !== "/dashboard" && pathname?.startsWith(item.href));
               const Icon = item.icon;
@@ -92,7 +138,7 @@ export function MobileSidebar({
               return (
                 <Link
                   key={item.href}
-                  href={item.href}
+                  href={withChannelQuery(item.href, channelId)}
                   onClick={() => setOpen(false)}
                   className={`relative flex items-center gap-2.5 rounded-[var(--radius-panel-sm)] px-2.5 py-2.5 text-sm ${
                     isActive ? "bg-surface-2 text-text" : "text-text-muted"

@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { PitchatMark } from "@/components/icons/pitchat";
 import { NAV_ITEMS } from "./nav-items";
 import { LogoutButton } from "@/app/dashboard/logout-button";
 import { SoundToggle } from "@/components/ui/sound-toggle";
 import { Tooltip, TooltipProvider } from "@/components/ui/tooltip";
+import { CHANNEL_PARAM, withChannelQuery } from "@/lib/channel/url";
 
 /**
  * Thin Rail — Fase B (Signal Desk V2, direção aprovada 25/09/2026). Substitui
@@ -25,6 +26,8 @@ import { Tooltip, TooltipProvider } from "@/components/ui/tooltip";
  */
 export function Rail({ workspaceName, email }: { workspaceName: string; email: string }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const channelId = searchParams.get(CHANNEL_PARAM);
   const initial = workspaceName.trim().charAt(0).toUpperCase() || "?";
 
   return (
@@ -55,7 +58,7 @@ export function Rail({ workspaceName, email }: { workspaceName: string; email: s
             return (
               <Tooltip key={item.href} content={item.label}>
                 <Link
-                  href={item.href}
+                  href={withChannelQuery(item.href, channelId)}
                   aria-label={item.label}
                   aria-current={isActive ? "page" : undefined}
                   className={`relative flex h-10 w-10 items-center justify-center rounded-[var(--radius-panel-sm)] transition-colors duration-[var(--motion-ui)] ${
