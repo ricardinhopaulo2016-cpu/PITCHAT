@@ -8,6 +8,7 @@ import { StatusIndicator, ErrorIndicator, type AutomationStatus } from "@/compon
 import { FlowIcon } from "@/components/icons/pitchat";
 import { CreateAutomationForm } from "./create-automation-form";
 import { AutomationRowActions } from "./automation-row-actions";
+import { groupAccountsByProfile, listWorkspaceInstagramAccounts } from "@/lib/social-accounts/repo";
 
 type ProfileRow = { id: string; name: string };
 type AutomationRow = {
@@ -28,7 +29,7 @@ export default async function AutomationsPage() {
   if (!admin) redirect("/setup");
 
   // profiles e automations não dependem um do outro — paraleliza.
-  const [{ data: profiles }, { data: automations }] = await Promise.all([
+  const [{ data: profiles }, { data: automations }, accounts] = await Promise.all([
     admin.from("profiles").select("id, name").eq("workspace_id", auth.workspace.id).returns<ProfileRow[]>(),
     admin
       .from("automations")
@@ -36,6 +37,7 @@ export default async function AutomationsPage() {
       .eq("workspace_id", auth.workspace.id)
       .order("updated_at", { ascending: false })
       .returns<AutomationRow[]>(),
+    listWorkspaceInstagramAccounts(admin, auth.workspace.id),
   ]);
 
   const automationIds = (automations ?? []).map((a) => a.id);
@@ -58,6 +60,8 @@ export default async function AutomationsPage() {
   }
 
   const profileById = new Map((profiles ?? []).map((p) => [p.id, p.name]));
+  // A automação pertence ao PERFIL (não a uma conta): vale para todas as contas conectadas dele.
+  const connectedByProfile = groupAccountsByProfile(accounts.filter((a) => a.status === "connected"));
 
   return (
     <>
@@ -86,7 +90,7 @@ export default async function AutomationsPage() {
               <thead>
                 <tr className="border-b border-border-subtle text-left text-xs text-text-muted">
                   <th className="px-5 py-2.5 font-medium">Nome</th>
-                  <th className="px-3 py-2.5 font-medium">Conta</th>
+                  <th className="px-3 py-2.5 font-medium">Perfil</th>
                   <th className="px-3 py-2.5 font-medium">Trigger</th>
                   <th className="px-3 py-2.5 font-medium">Status</th>
                   <th className="px-3 py-2.5 font-medium">Runs</th>
@@ -112,7 +116,15 @@ export default async function AutomationsPage() {
                           {automation.name}
                         </Link>
                       </td>
-                      <td className="px-3 py-3.5 text-text-secondary">{profileById.get(automation.profile_id) ?? "—"}</td>
+                      <td className="px-3 py-3.5 text-text-secondary">
+                        {profileById.get(automation.profile_id) ?? "—"}
+                        <span className="block text-xs text-text-muted">
+                          {(() => {
+                            const n = connectedByProfile.get(automation.profile_id)?.length ?? 0;
+                            return n === 0 ? "nenhuma conta conectada" : n === 1 ? "1 conta conectada" : `${n} contas conectadas`;
+                          })()}
+                        </span>
+                      </td>
                       <td className="px-3 py-3.5 text-text-secondary">Instagram Comment</td>
                       <td className="px-3 py-3.5">
                         <StatusIndicator status={automation.status} />

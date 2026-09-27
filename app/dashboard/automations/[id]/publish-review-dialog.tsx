@@ -6,6 +6,7 @@ import { compileFlowToGraph } from "@/lib/automation/flow-spec";
 import { computeGraphReviewHash } from "@/lib/automation/review-hash";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import type { ProfileAccountSummary } from "@/lib/social-accounts/repo";
 
 /**
  * Gate de revisão antes de publicar (B3, auditoria 24/09/2026): foi possível
@@ -34,18 +35,21 @@ function Section({ label, items }: { label: string; items: string[] }) {
 export function PublishReviewDialog({
   open,
   onOpenChange,
-  accountUsername,
+  accounts,
   steps,
   onConfirm,
   confirming,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  accountUsername: string | null;
+  /** Contas Instagram do PERFIL desta automação — ela vale para todas (a automação pertence ao profile, não a uma conta). */
+  accounts: ProfileAccountSummary[];
   steps: FlowStep[];
   onConfirm: (reviewedGraphHash: string) => void;
   confirming: boolean;
 }) {
+  const connected = accounts.filter((a) => a.status === "connected");
+  const notConnected = accounts.length - connected.length;
   const checkboxId = useId();
   const [reviewed, setReviewed] = useState(false);
   const [hash, setHash] = useState<string | null>(null);
@@ -106,8 +110,22 @@ export function PublishReviewDialog({
       <DialogContent title="Publicar automação" description="Confira exatamente o que vai sair pro Instagram antes de confirmar.">
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1">
-            <p className="text-[11px] font-medium uppercase tracking-wide text-text-muted">Conta</p>
-            <p className="text-sm text-text">{accountUsername ? `@${accountUsername}` : "Nenhuma conta conectada a este perfil"}</p>
+            <p className="text-[11px] font-medium uppercase tracking-wide text-text-muted">{connected.length === 1 ? "Conta" : "Contas"}</p>
+            {connected.length === 0 ? (
+              <p className="text-sm text-text">Nenhuma conta conectada a este perfil</p>
+            ) : (
+              <>
+                <p className="text-sm text-text">{connected.map((a) => (a.username ? `@${a.username}` : "conta sem username")).join(", ")}</p>
+                {connected.length > 1 && (
+                  <p className="text-xs text-text-muted">Esta automação vale para todas as contas conectadas do perfil.</p>
+                )}
+              </>
+            )}
+            {notConnected > 0 && (
+              <p className="text-xs text-warning">
+                {notConnected === 1 ? "1 conta do perfil não está conectada" : `${notConnected} contas do perfil não estão conectadas`} e não receberá esta automação.
+              </p>
+            )}
           </div>
 
           <div className="flex flex-col gap-1">

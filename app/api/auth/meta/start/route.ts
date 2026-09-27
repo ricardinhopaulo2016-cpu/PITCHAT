@@ -5,7 +5,12 @@ import { buildAuthorizationUrl, buildOAuthState, getMetaOAuthConfig } from "@/li
 
 export const runtime = "nodejs";
 
-/** Inicia o fluxo: /api/auth/meta/start?profileId=... redireciona pra tela de autorização do Instagram. */
+/**
+ * Inicia o fluxo: /api/auth/meta/start?profileId=... redireciona pra tela de autorização do Instagram.
+ * - sem `reconnect`: "adicionar conta" ao perfil (pode ser a 2ª, 3ª... conta do mesmo perfil).
+ * - `&reconnect=<social_accounts.id>`: "reconectar ESTA conta" — o callback confere se a conta
+ *   autorizada na Meta é a mesma e recusa (sem alterar nada) se não for.
+ */
 export async function GET(request: Request) {
   const auth = await getAuthContext();
   if (!auth) return NextResponse.redirect(new URL("/login", request.url));
@@ -33,6 +38,19 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "PROFILE_NOT_FOUND" }, { status: 404 });
   }
 
-  const state = buildOAuthState(auth.workspace.id, profileId, config.instagramAppSecret);
+  const reconnectId = new URL(request.url).searchParams.get("reconnect");
+  if (reconnectId) {
+    const { data: target } = await admin!
+      .from("social_accounts")
+      .select("id")
+      .eq("id", reconnectId)
+      .eq("workspace_id", auth.workspace.id)
+      .eq("profile_id", profileId)
+      .eq("platform", "instagram")
+      .maybeSingle();
+    if (!target) return NextResponse.json({ error: "SOCIAL_ACCOUNT_NOT_FOUND" }, { status: 404 });
+  }
+
+  const state = buildOAuthState(auth.workspace.id, profileId, config.instagramAppSecret, reconnectId ?? undefined);
   return NextResponse.redirect(buildAuthorizationUrl(config, state));
 }

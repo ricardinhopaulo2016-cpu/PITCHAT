@@ -25,6 +25,7 @@ export function createFakeSupabase() {
     tables[table] ??= []; // qualquer tabela nova usada num teste funciona sem precisar lembrar de listar aqui em cima
     const filters: [string, unknown][] = [];
     const inFilters: [string, unknown[]][] = [];
+    const neqFilters: [string, unknown][] = [];
     let orderBy: { col: string; ascending: boolean } | null = null;
     let limitN: number | null = null;
     let pendingUpdate: Record<string, unknown> | null = null;
@@ -33,7 +34,10 @@ export function createFakeSupabase() {
 
     function readMatched() {
       let rows = tables[table].filter(
-        (r) => matches(r, filters) && inFilters.every(([col, values]) => values.includes(r[col]))
+        (r) =>
+          matches(r, filters) &&
+          inFilters.every(([col, values]) => values.includes(r[col])) &&
+          neqFilters.every(([col, val]) => r[col] !== val)
       );
       if (orderBy) {
         const { col, ascending } = orderBy;
@@ -56,6 +60,11 @@ export function createFakeSupabase() {
       },
       eq(col: string, val: unknown) {
         filters.push([col, val]);
+        return api;
+      },
+      // `.neq(col, val)` — usado por lib/social-accounts/repo.ts (exclui contas revogadas).
+      neq(col: string, val: unknown) {
+        neqFilters.push([col, val]);
         return api;
       },
       // `.in(col, [values])` — usado por queries em lote (ex:

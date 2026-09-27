@@ -9,6 +9,7 @@ import {
   verifyOAuthState,
 } from "@/lib/meta/oauth";
 import { encryptToken } from "@/lib/meta/token-crypto";
+import { decideAccountLink, type LinkableAccount } from "@/lib/meta/account-link";
 
 export const runtime = "nodejs";
 
@@ -59,6 +60,39 @@ export async function GET(request: Request) {
     // casa e a automação fica inerte sem nenhum erro visível.
     const identity = await fetchInstagramIdentity(longLived.accessToken);
 
+    // Decide ANTES de qualquer efeito colateral (assinatura de webhook, escrita):
+    // "adicionar conta" vs "reconectar" nunca pode sobrescrever/reassociar uma
+    // conta por acidente (Fase D0). `social_accounts` é único por
+    // (platform, external_account_id); um profile pode ter várias contas.
+    const linkColumns = "id, workspace_id, profile_id, external_account_id";
+    const [{ data: existing }, { data: reconnectTarget }] = await Promise.all([
+      admin
+        .from("social_accounts")
+        .select(linkColumns)
+        .eq("platform", "instagram")
+        .eq("external_account_id", identity.igUserId)
+        .maybeSingle<LinkableAccount>(),
+      parsedState.reconnectAccountId
+        ? admin
+            .from("social_accounts")
+            .select(linkColumns)
+            .eq("id", parsedState.reconnectAccountId)
+            .eq("workspace_id", parsedState.workspaceId)
+            .eq("profile_id", parsedState.profileId)
+            .maybeSingle<LinkableAccount>()
+        : Promise.resolve({ data: null }),
+    ]);
+
+    const decision = decideAccountLink({
+      workspaceId: parsedState.workspaceId,
+      profileId: parsedState.profileId,
+      authorizedExternalId: identity.igUserId,
+      existing: existing ?? null,
+      reconnectTarget: reconnectTarget ?? null,
+      reconnectRequested: !!parsedState.reconnectAccountId,
+    });
+    if (decision.action === "reject") return redirectToSocialAccounts("error", decision.reason);
+
     // Assinar o app a nível de App Dashboard NÃO é suficiente — cada conta
     // precisa individualmente "optar" por mandar eventos pro nosso app (ver
     // comentário em lib/meta/oauth.ts::subscribeAccountToWebhooks). Achado
@@ -66,23 +100,28 @@ export async function GET(request: Request) {
     // pra essa conta, sem nenhum erro visível em lugar nenhum.
     const webhookSubscribed = await subscribeAccountToWebhooks(longLived.accessToken, identity.igUserId);
 
-    const { error: upsertError } = await admin.from("social_accounts").upsert(
-      {
-        workspace_id: parsedState.workspaceId,
-        profile_id: parsedState.profileId,
-        platform: "instagram",
-        external_account_id: identity.igUserId,
-        username: identity.username,
-        access_token_encrypted: encryptToken(longLived.accessToken),
-        token_expires_at: longLived.expiresAt.toISOString(),
-        permissions: shortLived.permissions,
-        status: "connected",
-        // Não falha a conexão inteira por isso (o OAuth em si funcionou) —
-        // mas nunca finge que o webhook está ativo se a chamada falhou.
-        status_detail: webhookSubscribed ? null : "webhook_subscription_failed",
-      },
-      { onConflict: "platform,external_account_id" }
-    );
+    const credentials = {
+      username: identity.username,
+      access_token_encrypted: encryptToken(longLived.accessToken),
+      token_expires_at: longLived.expiresAt.toISOString(),
+      permissions: shortLived.permissions,
+      status: "connected",
+      // Não falha a conexão inteira por isso (o OAuth em si funcionou) —
+      // mas nunca finge que o webhook está ativo se a chamada falhou.
+      status_detail: webhookSubscribed ? null : "webhook_subscription_failed",
+    };
+
+    // update só toca credenciais — nunca workspace_id/profile_id da linha existente.
+    const { error: upsertError } =
+      decision.action === "update"
+        ? await admin.from("social_accounts").update(credentials).eq("id", decision.accountId)
+        : await admin.from("social_accounts").insert({
+            workspace_id: parsedState.workspaceId,
+            profile_id: parsedState.profileId,
+            platform: "instagram",
+            external_account_id: identity.igUserId,
+            ...credentials,
+          });
 
     if (upsertError) return redirectToSocialAccounts("error", "db_error");
 

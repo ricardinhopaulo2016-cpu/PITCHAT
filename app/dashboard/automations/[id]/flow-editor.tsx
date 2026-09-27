@@ -12,6 +12,7 @@ import { Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
 import { PublishReviewDialog } from "./publish-review-dialog";
+import type { ProfileAccountSummary } from "@/lib/social-accounts/repo";
 
 const STEP_LABELS: Record<FlowStepType, string> = {
   KEYWORD_MATCH: "Keyword Match",
@@ -337,13 +338,13 @@ export function FlowEditor({
   initialSteps,
   decompileFailed,
   hasDraft,
-  accountUsername,
+  accounts,
 }: {
   automationId: string;
   initialSteps: FlowStep[];
   decompileFailed: boolean;
   hasDraft: boolean;
-  accountUsername: string | null;
+  accounts: ProfileAccountSummary[];
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -550,7 +551,7 @@ export function FlowEditor({
       <PublishReviewDialog
         open={reviewOpen}
         onOpenChange={setReviewOpen}
-        accountUsername={accountUsername}
+        accounts={accounts}
         steps={steps}
         onConfirm={confirmPublish}
         confirming={publishing}

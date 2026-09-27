@@ -5,6 +5,7 @@ import { getAuthContext } from "@/lib/auth/session";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { loadAutomationForWorkspace, loadDraftVersion, loadVersionById } from "@/lib/automation/repo";
 import { decompileGraphToFlow } from "@/lib/automation/flow-spec";
+import { listProfileInstagramAccounts } from "@/lib/social-accounts/repo";
 import { StatusIndicator, type AutomationStatus } from "@/components/ui/status-indicator";
 import { FlowEditor } from "./flow-editor";
 
@@ -24,18 +25,15 @@ export default async function AutomationEditorPage({ params }: { params: Promise
   // abaixo), mas buscar ela já em paralelo não muda o resultado — só evita
   // um 4º round-trip sequencial no caso comum de automação sem rascunho
   // pendente (reauditoria HEAD 24/09/2026).
-  const [{ data: profile }, { data: socialAccount }, draft, publishedVersion] = await Promise.all([
+  const [{ data: profile }, accounts, draft, publishedVersion] = await Promise.all([
     admin.from("profiles").select("name").eq("id", automation.profile_id).maybeSingle(),
-    admin
-      .from("social_accounts")
-      .select("username")
-      .eq("profile_id", automation.profile_id)
-      .eq("status", "connected")
-      .maybeSingle(),
+    // Lista — um perfil pode ter várias contas (Fase D0); nunca .maybeSingle().
+    listProfileInstagramAccounts(admin, auth.workspace.id, automation.profile_id),
     loadDraftVersion(admin, id),
     automation.current_version_id ? loadVersionById(admin, automation.current_version_id) : Promise.resolve(null),
   ]);
   const version = draft ?? publishedVersion;
+  const connected = accounts.filter((a) => a.status === "connected");
 
   const spec = version ? decompileGraphToFlow(version.graph) : { steps: [] };
 
@@ -52,8 +50,12 @@ export default async function AutomationEditorPage({ params }: { params: Promise
               <StatusIndicator status={automation.status as AutomationStatus} />
             </div>
             <p className="mt-1 text-sm text-text-secondary">
-              Instagram{socialAccount?.username ? ` · @${socialAccount.username}` : profile ? ` · ${profile.name}` : ""}
+              {profile?.name ?? "Perfil"} · Instagram
+              {connected.length > 0 ? ` · ${connected.map((a) => (a.username ? `@${a.username}` : "conta sem username")).join(", ")}` : " · nenhuma conta conectada"}
             </p>
+            {connected.length > 1 && (
+              <p className="mt-0.5 text-xs text-text-muted">Esta automação pertence ao perfil e vale para todas as {connected.length} contas conectadas.</p>
+            )}
           </div>
         </div>
       </div>
@@ -63,7 +65,7 @@ export default async function AutomationEditorPage({ params }: { params: Promise
         initialSteps={spec?.steps ?? []}
         decompileFailed={version !== null && spec === null}
         hasDraft={!!draft}
-        accountUsername={socialAccount?.username ?? null}
+        accounts={accounts}
       />
     </>
   );

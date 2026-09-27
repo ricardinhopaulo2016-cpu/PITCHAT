@@ -236,7 +236,7 @@ export function needsRefresh(expiresAt: Date, thresholdDays = 10): boolean {
 
 const STATE_MAX_AGE_MS = 10 * 60 * 1000; // 10 min é de sobra pro usuário autorizar na Meta
 
-type StatePayload = { workspaceId: string; profileId: string; nonce: string; ts: number };
+type StatePayload = { workspaceId: string; profileId: string; reconnectAccountId?: string; nonce: string; ts: number };
 
 function signStatePayload(payload: StatePayload, secret: string): string {
   const json = JSON.stringify(payload);
@@ -245,14 +245,23 @@ function signStatePayload(payload: StatePayload, secret: string): string {
   return `${encoded}.${signature}`;
 }
 
-export function buildOAuthState(workspaceId: string, profileId: string, secret: string): string {
-  return signStatePayload({ workspaceId, profileId, nonce: randomUUID(), ts: Date.now() }, secret);
+/**
+ * `reconnectAccountId` (opcional) = "reconectar ESTA conta" (social_accounts.id).
+ * Sem ele o fluxo é "adicionar conta" ao perfil. A Meta não deixa pré-selecionar
+ * qual conta volta do OAuth, então o callback compara a identidade real
+ * autorizada com a conta-alvo (ver lib/meta/account-link.ts).
+ */
+export function buildOAuthState(workspaceId: string, profileId: string, secret: string, reconnectAccountId?: string): string {
+  return signStatePayload(
+    { workspaceId, profileId, ...(reconnectAccountId ? { reconnectAccountId } : {}), nonce: randomUUID(), ts: Date.now() },
+    secret
+  );
 }
 
 export function verifyOAuthState(
   state: string,
   secret: string
-): { workspaceId: string; profileId: string } | null {
+): { workspaceId: string; profileId: string; reconnectAccountId?: string } | null {
   const [encoded, signature] = state.split(".");
   if (!encoded || !signature) return null;
 
@@ -266,7 +275,11 @@ export function verifyOAuthState(
   try {
     const payload = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")) as StatePayload;
     if (Date.now() - payload.ts > STATE_MAX_AGE_MS) return null; // expirado
-    return { workspaceId: payload.workspaceId, profileId: payload.profileId };
+    return {
+      workspaceId: payload.workspaceId,
+      profileId: payload.profileId,
+      ...(payload.reconnectAccountId ? { reconnectAccountId: payload.reconnectAccountId } : {}),
+    };
   } catch {
     return null;
   }

@@ -284,7 +284,7 @@ O roadmap anterior (Fase 0–12, com Media Library nas Fases 2–3) está **subs
 | A | Quick Polish | ✅ concluída, validada visualmente em produção pelo Paulo |
 | B | Premium Shell / Signal Desk V2 | ✅ implementada, validada visualmente pelo Paulo |
 | C | Inbox + Contacts V2 | ✅ **concluída e validada visualmente pelo Paulo em produção** (HEAD validado `460cd6d`; ver 13.2) |
-| D | Multi-Instagram | ▶ **próxima fase** (não iniciada) |
+| D | Multi-Instagram | 🟡 **em andamento** — D0: código preparado p/ 2ª conta, ⏳ aguardando teste E2E IG01 × IG02 (ver 13.4). D1 (filtro) e demais **não iniciados**; Fase D **não concluída** |
 | E1 | Backend Graph Validator (`validateGraph` autoritativo) | ⏳ futura — vem **antes** de E2 |
 | E2 | Automation Canvas (`@xyflow/react`) | ⏳ futura |
 | F | YouTube | ⏳ futura |
@@ -319,3 +319,21 @@ Fechada em 26/09/2026 — tests, lint, build e Vercel ok; Inbox V2, Contact Deta
 - **A == B**: reavaliar o schema de `contacts`.
 
 **Nenhuma migration antes desse teste.** (Não é um bug conhecido; é uma dúvida a validar.)
+
+### 13.4 Fase D0 — Multi-Instagram: código seguro para 2+ contas (⏳ aguardando teste E2E IG01 × IG02)
+
+**Semântica adotada (confirmada contra schema + engine, sem contradição estrutural):**
+
+- **Profile** = persona + conjunto de automações. **Social accounts** = 1+ contas Instagram associadas ao profile (`social_accounts.profile_id`; UNIQUE só em `(platform, external_account_id)`, não em `profile_id`).
+- **Automação pertence ao profile** e vale para **todas** as contas do profile (`ingestInstagramComment` → `loadActiveAutomations(socialAccount.profile_id)`). Se duas contas precisam de automações diferentes → **profiles diferentes**. Sem many-to-many automation↔social_account.
+- Token/lookup nunca se misturam: webhook casa por `(platform, external_account_id)` (único); engine, DM manual e resposta pública usam `conversation/comment.social_account_id`; refresh de token e disconnect são por conta.
+
+**Suposições de "1 conta por profile" encontradas e corrigidas:** (1) Social Accounts: `Map profile→conta` escondia a 2ª conta; (2) Editor de automação: `social_accounts … .maybeSingle()` por `profile_id` falha com 2+ linhas e mostrava "Nenhuma conta conectada" (perigoso na revisão de publicação); (3) callback OAuth: `upsert` reescrevia `workspace_id`/`profile_id` da linha existente — reassociava conta em silêncio; (4) "Reconectar" só carregava `profileId`, sem alvo; (5) lista de Automations rotulava profile como "Conta".
+
+**Mudanças (sem migration, sem schema):**
+- Social Accounts agrupada por profile (várias contas por profile, "Adicionar conta Instagram", Reconectar/Desconectar por conta) — `lib/social-accounts/repo.ts`.
+- OAuth: `start?profileId=X` = **adicionar** conta; `&reconnect=<social_account_id>` = **reconectar ESTA conta**. A Meta não deixa pré-selecionar a conta que volta do OAuth, então o callback compara a identidade real autorizada com a conta-alvo e **recusa sem alterar nada** se forem diferentes (`wrong_account_authorized`). Conta já ligada a outro profile/workspace também é recusada; linha existente só tem credenciais atualizadas, nunca profile/workspace (`lib/meta/account-link.ts`, decisão antes de qualquer efeito colateral).
+- Editor de automação lista as contas do profile e diz explicitamente que a automação vale para todas; diálogo de publicação idem. Lista de Automations: coluna "Perfil" + nº de contas conectadas.
+- ChannelSwitcher, Inbox e Contacts **inalterados** (já usam `social_account_id`; switcher lista todas as contas, "Todos os canais" segue única seleção funcional).
+
+**Contacts**: sem migration, `unique(workspace_id, platform, platform_user_id)` intacto. **Pendente (E2E real, obrigatório):** Paulo conecta IG02; a **mesma conta pessoal** comenta em IG01 (`PITCHAT-IDTEST-A`) e IG02 (`PITCHAT-IDTEST-B`); comparar `contacts.platform_user_id` real persistido: **A ≠ B** → schema atual ok, segue D1 (filtro); **A == B** → parar e trazer linhas reais + proposta mínima de migration para o Paulo decidir.
