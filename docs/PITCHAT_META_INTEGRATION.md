@@ -4,7 +4,7 @@ Levantamento feito em cima da documentação oficial `developers.facebook.com` (
 
 ## 0. Status de verificação — IMPLEMENTED ≠ PROVADO
 
-Existe código e testes (com mocks) para os quatro fluxos abaixo, mas **nenhum rodou contra a API real da Meta ainda** — só passam a ser considerados funcionando de verdade depois de um teste ponta a ponta com Instagram real (ver `docs/PITCHAT_ARCHITECTURE.md` §13, "Teste ponta a ponta real"). Até lá, o status correto é `IMPLEMENTED / NOT E2E VERIFIED`, nunca "funcionando":
+Os fluxos abaixo têm código e testes (com mocks). Cada um só conta como funcionando de verdade depois de um teste ponta a ponta com Instagram real (ver `docs/PITCHAT_ARCHITECTURE.md` §12, marco E2E de 24/09/2026). O que ainda não rodou contra a API real fica `IMPLEMENTED / NOT E2E VERIFIED`, nunca "funcionando":
 
 | Componente | Código | Status |
 |---|---|---|
@@ -13,8 +13,8 @@ Existe código e testes (com mocks) para os quatro fluxos abaixo, mas **nenhum r
 | Public Reply (`lib/meta/client.ts::sendPublicReply`) | Completo | **`E2E VERIFIED (24/09/2026)`** — comentário público real postado no Instagram |
 | Private Reply (`lib/meta/client.ts::sendPrivateReply`) | Completo | **`E2E VERIFIED (24/09/2026)`** — DM real confirmada por read receipt do destinatário. Variante com `quickReplies` anexado: `NOT E2E VERIFIED` ainda (ver §4) |
 | Send API — quick reply (`lib/meta/client.ts::sendQuickReplies`) | Completo | **`E2E VERIFIED (24/09/2026)`** — clique real retomou a `automation_run` correta via `messaging_postbacks` |
-| Send API — Button Template (`lib/meta/client.ts::sendButtonTemplate`) | Completo | `IMPLEMENTED / NOT E2E VERIFIED` — formato confirmado na doc oficial, ainda sem chamada real (próximo teste) |
-| DELAY (`lib/automation/engine.ts`, `app/api/jobs/resume-automation-run/route.ts`) | Completo | `IMPLEMENTED / NOT E2E VERIFIED` (real desde 09/09/2026 contra infra, nunca com um `automation_run` de comentário real ponta a ponta) |
+| Send API — Button Template (`lib/meta/client.ts::sendButtonTemplate`) | Completo | **`E2E VERIFIED (24/09/2026)`** — `SEND_MESSAGE` real com `web_url` depois do clique no Quick Reply (cadeia única, ver `docs/PITCHAT_ARCHITECTURE.md` §12) |
+| DELAY (`lib/automation/engine.ts`, `app/api/jobs/resume-automation-run/route.ts`) | Completo | **`E2E VERIFIED (24/09/2026)`** — DELAY real de 2 min via QStash → callback → follow-up → `completed` |
 
 Atualizar esta tabela pra `E2E VERIFIED (dd/mm/aaaa)` só depois de uma chamada real bem-sucedida, com o `messageId`/status HTTP retornado pela Meta anexado ao relatório de fase.
 
@@ -306,8 +306,8 @@ Fontes: https://developers.facebook.com/docs/instagram-platform/app-review/ , ht
 ## 9. Checklist de variáveis de ambiente (Meta)
 
 ```
-META_APP_ID=
-META_APP_SECRET=
+INSTAGRAM_APP_ID=          # OAuth (Instagram Login) — NÃO é o Meta App ID
+INSTAGRAM_APP_SECRET=      # OAuth + assinatura do webhook (§3)
 META_REDIRECT_URI=
 META_WEBHOOK_VERIFY_TOKEN=
 META_API_VERSION=v26.0

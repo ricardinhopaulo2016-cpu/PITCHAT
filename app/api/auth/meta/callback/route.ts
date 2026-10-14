@@ -16,8 +16,8 @@ export const runtime = "nodejs";
 
 /**
  * Callback do OAuth — a Meta redireciona o navegador do usuário pra cá com
- * ?code=...&state=.... Nunca testado contra a API real ainda (bloqueado até
- * existir Meta App). Fluxo: valida state -> troca code por token curto ->
+ * ?code=...&state=.... Validado contra a API real (E2E 10/09/2026, e a 2ª
+ * conta em 27/09/2026 — ver docs/PITCHAT_META_INTEGRATION.md §0). Fluxo: valida state -> troca code por token curto ->
  * exchange pra long-lived -> busca username -> grava social_accounts.
  */
 export async function GET(request: Request) {

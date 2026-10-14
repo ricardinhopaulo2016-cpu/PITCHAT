@@ -1,8 +1,8 @@
 # PITCHAT
 
-Automação de Instagram (comentário → private reply → DM com botões), Media Library
-inteligente (deduplicação por hash + fingerprint perceptual) e Inbox — fonte de
-verdade interna para substituir ManyChat + Drive nessa operação.
+Automação de Instagram (comentário → private reply → DM com botões), Inbox e Contacts
+— fonte de verdade interna para substituir o ManyChat nessa operação. A Media Library
+(deduplicação por hash + fingerprint perceptual) existe no código, mas está CONGELADA.
 
 **Fora de escopo nesta versão**: agendamento/publicação de posts, calendário, scheduler.
 Isso é uma fase futura — ver `docs/PITCHAT_ARCHITECTURE.md`.
