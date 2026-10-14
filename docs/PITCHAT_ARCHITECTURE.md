@@ -285,7 +285,7 @@ O roadmap anterior (Fase 0–12, com Media Library nas Fases 2–3) está **subs
 | B | Premium Shell / Signal Desk V2 | ✅ implementada, validada visualmente pelo Paulo |
 | C | Inbox + Contacts V2 | ✅ **concluída e validada visualmente pelo Paulo em produção** (HEAD validado `460cd6d`; ver 13.2) |
 | D | Multi-Instagram | 🟡 **em andamento** — **D0 ✅ concluída e validada E2E**; **D1 (filtro por canal) 🟡 implementada, AGUARDANDO validação visual/E2E do Paulo** (ver 13.3/13.4/13.5); Fase D **não concluída** |
-| E1 | Backend Graph Validator (`validateGraph` autoritativo) | ⏳ futura — vem **antes** de E2 |
+| E1 | Backend Graph Validator (`validateGraph` autoritativo) | 🟡 **implementada (27/09/2026), AGUARDANDO validação do Paulo** (ver 13.6) — vem **antes** de E2 |
 | E2 | Automation Canvas (`@xyflow/react`) | ⏳ futura |
 | F | YouTube | ⏳ futura |
 | G | TikTok Capability Spike | ⏳ futura |
@@ -366,3 +366,13 @@ Fechada em 26/09/2026 — tests, lint, build e Vercel ok; Inbox V2, Contact Deta
 - Sem migration, sem coluna nova, sem mudança em `contacts`.
 
 **Status: D1 implementada. NÃO fechar como concluída** — falta a validação visual/E2E do Paulo (troca de canal, deep links, Health por conta) em produção.
+
+### 13.6 Fase E1 — `validateGraph` autoritativo (🟡 implementada, aguardando validação do Paulo)
+
+`lib/automation/validate-graph.ts` (função pura, testada em `__tests__/validate-graph.test.ts`). Dois estágios: **draft** (completude vira warning: o rascunho vazio trigger→end pode ser salvo) e **publish** (tudo é erro). Aplicado em: `PUT draft`, `publish` (antes do gate de revisão), `status→active` (revalida a versão publicada), `duplicate` e `seed-example`. Falha = HTTP 422 `INVALID_GRAPH` com `detail` legível e `issues[]` por nó (`nodeId`, `code`, `message`); pausar/arquivar nunca é bloqueado.
+
+Regras (errors): 1 trigger, ≥1 END, ids únicos, tipos conhecidos, arestas para nós existentes, END sem saída, sem ciclos, todo nó alcançável e com saída, rótulos coerentes com o tipo (CONDITION `true`/`false`, RANDOM_SPLIT um por ramo, QUICK_REPLY = chave da opção; aresta sem rótulo é curinga, como em `pickEdge`), dados válidos por nó (limites de 13 opções/20 caracteres, botão com URL http(s), HTTP_REQUEST passa por `checkUrlAllowed`), PUBLIC/PRIVATE_REPLY **depois** de um QUICK_REPLY (a run retoma sem `commentId`) e fluxo sem nenhuma ação. Warnings: sem KEYWORD_MATCH (dispara em todo comentário), DELAY > 24h, `user_replied`/`tag_exists`/`custom_field` (o engine ainda não alimenta esse contexto: hoje dão sempre falso) e SET_CUSTOM_FIELD (não persiste).
+
+Correções de base feitas junto (F1): hash de revisão canônico (`canonicalStringify`, independe da ordem de chaves do jsonb) e retomada de quick reply/delay sensível ao rótulo (`resumeTargetId`). Versões já ativas inválidas **não** são derrubadas; só bloqueiam novo publish/ativação.
+
+**Status: E1 implementada. NÃO fechar como concluída** — falta a validação do Paulo em produção (publicar o fluxo de exemplo, tentar publicar um rascunho vazio, ativar/pausar). Pendente: o editor sequencial V1 ainda não exibe os `warnings` na tela (a API já devolve).
