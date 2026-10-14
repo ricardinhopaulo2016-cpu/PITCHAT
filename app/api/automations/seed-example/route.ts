@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAuthContext } from "@/lib/auth/session";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { buildExampleFlow, compileFlowToGraph } from "@/lib/automation/flow-spec";
+import { invalidGraphBody, validateGraph } from "@/lib/automation/validate-graph";
 
 export const runtime = "nodejs";
 
@@ -22,6 +23,12 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
   const profileId = typeof body?.profileId === "string" ? body.profileId : null;
   if (!profileId) return NextResponse.json({ error: "profileId é obrigatório" }, { status: 400 });
+
+  // O seed insere já como 'published' (pula o gate de revisão) — por isso o
+  // exemplo PRECISA passar na validação de publicação (garantido em teste).
+  const exampleGraph = compileFlowToGraph(buildExampleFlow());
+  const validation = validateGraph(exampleGraph, { stage: "publish" });
+  if (!validation.ok) return NextResponse.json(invalidGraphBody(validation), { status: 500 });
 
   const { data: profile } = await admin
     .from("profiles")
@@ -54,7 +61,7 @@ export async function POST(request: Request) {
       automation_id: automation.id,
       version: 1,
       status: "published",
-      graph: compileFlowToGraph(buildExampleFlow()) as never,
+      graph: exampleGraph as never,
       published_at: now,
     })
     .select("id")

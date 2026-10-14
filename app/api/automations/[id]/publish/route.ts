@@ -3,6 +3,7 @@ import { getAuthContext } from "@/lib/auth/session";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { loadAutomationForWorkspace, loadDraftVersion } from "@/lib/automation/repo";
 import { computeGraphReviewHash, isReviewConfirmed } from "@/lib/automation/review-hash";
+import { invalidGraphBody, validateGraph } from "@/lib/automation/validate-graph";
 
 export const runtime = "nodejs";
 
@@ -32,6 +33,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const draft = await loadDraftVersion(admin, id);
   if (!draft) return NextResponse.json({ error: "NO_DRAFT_TO_PUBLISH" }, { status: 400 });
 
+  // Validação autoritativa ANTES do gate de revisão: não faz sentido revisar
+  // (nem publicar) um grafo que o engine não consegue executar direito.
+  const validation = validateGraph(draft.graph, { stage: "publish" });
+  if (!validation.ok) return NextResponse.json(invalidGraphBody(validation), { status: 422 });
+
   const body = await request.json().catch(() => ({}));
   const expectedHash = await computeGraphReviewHash(draft.graph);
   if (!isReviewConfirmed(body, expectedHash)) {
@@ -58,5 +64,5 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "DB_ERROR", detail: automationError.message }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, publishedVersion: draft.version });
+  return NextResponse.json({ ok: true, publishedVersion: draft.version, warnings: validation.warnings });
 }

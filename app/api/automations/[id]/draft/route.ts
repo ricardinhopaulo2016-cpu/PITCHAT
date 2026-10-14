@@ -3,6 +3,7 @@ import { getAuthContext } from "@/lib/auth/session";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { compileFlowToGraph, EMPTY_FLOW, validateFlowSpec } from "@/lib/automation/flow-spec";
 import { ensureDraftVersion, loadAutomationForWorkspace } from "@/lib/automation/repo";
+import { invalidGraphBody, validateGraph } from "@/lib/automation/validate-graph";
 
 export const runtime = "nodejs";
 
@@ -23,6 +24,10 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   if (!result.ok) return NextResponse.json({ error: "INVALID_FLOW", detail: result.error }, { status: 400 });
 
   const graph = compileFlowToGraph(result.spec);
+  // Rede de segurança do servidor: o grafo compilado nunca deveria falhar aqui;
+  // completude (ex: nenhuma ação ainda) só vira warning no rascunho.
+  const validation = validateGraph(graph, { stage: "draft" });
+  if (!validation.ok) return NextResponse.json(invalidGraphBody(validation), { status: 422 });
   const draft = await ensureDraftVersion(admin, id, compileFlowToGraph(EMPTY_FLOW));
 
   const { error } = await admin
@@ -32,5 +37,10 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 
   if (error) return NextResponse.json({ error: "DB_ERROR", detail: error.message }, { status: 500 });
 
-  return NextResponse.json({ ok: true, versionId: draft.id, version: draft.version });
+  return NextResponse.json({
+    ok: true,
+    versionId: draft.id,
+    version: draft.version,
+    warnings: validation.warnings,
+  });
 }

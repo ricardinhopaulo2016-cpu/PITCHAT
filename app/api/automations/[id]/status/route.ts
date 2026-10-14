@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { getAuthContext } from "@/lib/auth/session";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
-import { loadAutomationForWorkspace } from "@/lib/automation/repo";
+import { loadAutomationForWorkspace, loadVersionById } from "@/lib/automation/repo";
+import { invalidGraphBody, validateGraph } from "@/lib/automation/validate-graph";
 
 export const runtime = "nodejs";
 
@@ -42,6 +43,20 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       { error: "NO_PUBLISHED_VERSION", detail: "Publique uma versão antes de ativar a automação" },
       { status: 400 }
     );
+  }
+
+  // Ativar revalida a versão publicada (versões antigas, de antes do validador,
+  // podem estar inválidas). Pausar/arquivar nunca é bloqueado.
+  if (nextStatus === "active") {
+    const version = await loadVersionById(admin, automation.current_version_id!);
+    if (!version) {
+      return NextResponse.json(
+        { error: "NO_PUBLISHED_VERSION", detail: "A versão publicada não foi encontrada" },
+        { status: 400 }
+      );
+    }
+    const validation = validateGraph(version.graph, { stage: "publish" });
+    if (!validation.ok) return NextResponse.json(invalidGraphBody(validation), { status: 422 });
   }
 
   const { error } = await admin

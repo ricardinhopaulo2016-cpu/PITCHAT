@@ -3,6 +3,7 @@ import { getAuthContext } from "@/lib/auth/session";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { loadAutomationForWorkspace } from "@/lib/automation/repo";
 import type { Graph } from "@/lib/automation/graph";
+import { invalidGraphBody, validateGraph } from "@/lib/automation/validate-graph";
 
 export const runtime = "nodejs";
 
@@ -27,6 +28,9 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     .maybeSingle();
 
   const graph = (lastVersion?.graph as Graph | undefined) ?? { nodes: [], edges: [] };
+  // A cópia é rascunho (completude só avisa), mas um grafo estruturalmente quebrado não é clonado.
+  const validation = validateGraph(graph, { stage: "draft" });
+  if (!validation.ok) return NextResponse.json(invalidGraphBody(validation), { status: 422 });
 
   const { data: created, error: createError } = await admin
     .from("automations")

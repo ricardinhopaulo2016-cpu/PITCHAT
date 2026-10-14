@@ -26,7 +26,7 @@ export function AutomationRowActions({ automationId, status, hasPublishedVersion
     });
     const json = await res.json();
     setBusy(false);
-    if (!res.ok) return setError(json.error ?? "Falha ao mudar status");
+    if (!res.ok) return setError(json.detail ?? json.error ?? "Falha ao mudar status");
     router.refresh();
   }
 
@@ -36,7 +36,7 @@ export function AutomationRowActions({ automationId, status, hasPublishedVersion
     const res = await fetch(`/api/automations/${automationId}/duplicate`, { method: "POST" });
     const json = await res.json();
     setBusy(false);
-    if (!res.ok) return setError(json.error ?? "Falha ao duplicar");
+    if (!res.ok) return setError(json.detail ?? json.error ?? "Falha ao duplicar");
     router.push(`/dashboard/automations/${json.id}`);
   }
 
