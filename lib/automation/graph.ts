@@ -47,9 +47,38 @@ export function findNode(graph: Graph, nodeId: string): GraphNode | undefined {
 
 /** Próximo node a partir de um id, respeitando o label da aresta quando houver mais de uma saída. */
 export function nextNode(graph: Graph, fromNodeId: string, label?: string): GraphNode | undefined {
-  const edge = graph.edges.find(
-    (e) => e.from === fromNodeId && (label === undefined || e.label === undefined || e.label === label)
-  );
+  const edge = pickEdge(graph, fromNodeId, label);
   if (!edge) return undefined;
   return findNode(graph, edge.to);
+}
+
+/**
+ * Escolhe a aresta de saída. Com `label`, a aresta de rótulo IGUAL vence; só na
+ * falta dela cai na aresta sem rótulo (curinga). Antes, uma aresta sem rótulo
+ * listada primeiro capturava qualquer ramo, mesmo existindo aresta rotulada.
+ * Sem `label`, mantém o comportamento antigo: primeira aresta que sai do nó.
+ */
+function pickEdge(graph: Graph, fromNodeId: string, label?: string): GraphEdge | undefined {
+  const out = graph.edges.filter((e) => e.from === fromNodeId);
+  if (label === undefined) return out[0];
+  return out.find((e) => e.label === label) ?? out.find((e) => e.label === undefined);
+}
+
+/**
+ * Próximo nó (id) ao RETOMAR uma run pausada — quick reply (rótulo = chave da
+ * opção clicada) ou DELAY (sem rótulo: prefere a aresta sem rótulo, depois a
+ * primeira). Se não houver aresta, devolve `fallbackId` (comportamento antigo).
+ */
+export function resumeTargetId(
+  graph: Graph,
+  fromNodeId: string,
+  fallbackId: string,
+  label?: string
+): string {
+  const edge =
+    label !== undefined
+      ? pickEdge(graph, fromNodeId, label)
+      : (graph.edges.find((e) => e.from === fromNodeId && e.label === undefined) ??
+        pickEdge(graph, fromNodeId));
+  return edge?.to ?? fallbackId;
 }

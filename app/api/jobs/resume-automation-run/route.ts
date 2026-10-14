@@ -4,7 +4,7 @@ import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { advanceRun, claimWaitingRun } from "@/lib/automation/engine";
 import { decryptToken } from "@/lib/meta/token-crypto";
 import { realMetaClient } from "@/lib/meta/client";
-import type { Graph } from "@/lib/automation/graph";
+import { resumeTargetId, type Graph } from "@/lib/automation/graph";
 import type { ExecutionContext } from "@/lib/automation/node-handlers";
 
 export const runtime = "nodejs";
@@ -132,8 +132,8 @@ export async function POST(request: Request) {
     const cursorNodeId = run.cursor_node_id!;
     // DELAY: o delay já "aconteceu", segue pro PRÓXIMO node. Retry: reexecuta
     // o MESMO node que falhou (é ele que precisa rodar de novo).
-    const nextEdge = graph.edges.find((e) => e.from === cursorNodeId);
-    const startNodeId = waitingReason === "retry" ? cursorNodeId : (nextEdge?.to ?? cursorNodeId);
+    const startNodeId =
+      waitingReason === "retry" ? cursorNodeId : resumeTargetId(graph, cursorNodeId, cursorNodeId);
 
     // PUBLIC_REPLY/PRIVATE_REPLY (retry) precisam do comment_id original —
     // não fica no `context` do run, mas `trigger_ref_id` já guarda o

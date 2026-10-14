@@ -205,7 +205,7 @@ export async function advanceRun(
             // Mesma pausa do node QUICK_REPLY (ver caso abaixo) — o botão
             // veio junto NESTA mensagem em vez de numa próxima separada, mas
             // o mecanismo de retomada é idêntico: o payload do botão já
-            // aponta pra este node id, então `nextAfter` funciona igual.
+            // aponta pra este node id, então `resumeTargetId` funciona igual.
             await updateRun(admin, run.id, {
               status: "waiting",
               waiting_reason: "quick_reply",

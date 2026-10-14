@@ -4,7 +4,7 @@ import { decryptToken } from "@/lib/meta/token-crypto";
 import type { InstagramCommentReceived, InstagramMessageReceived, InstagramQuickReplyReceived } from "@/lib/meta/events";
 import { advanceRun, claimWaitingRun, parseQuickReplyPayload, type SocialAccountForEngine } from "./engine";
 import { recordInboundMessage } from "./messages";
-import type { Graph } from "./graph";
+import { resumeTargetId, type Graph } from "./graph";
 import type { ExecutionContext } from "./node-handlers";
 
 type SocialAccountRow = {
@@ -228,7 +228,7 @@ export async function ingestInstagramQuickReply(
       recipientId: event.fromUserId,
       commentId: null,
       ctx,
-      startNodeId: nextAfter(parsed.nodeId, version.graph as Graph),
+      startNodeId: resumeTargetId(version.graph as Graph, parsed.nodeId, parsed.nodeId, parsed.optionKey),
     });
 
     return { processed: true };
@@ -278,12 +278,6 @@ export async function ingestInstagramMessage(
   });
 
   return { processed: true };
-}
-
-/** Acha o próximo node depois do QUICK_REPLY que pausou, seguindo a aresta certa. */
-function nextAfter(quickReplyNodeId: string, graph: Graph): string {
-  const edge = graph.edges.find((e) => e.from === quickReplyNodeId);
-  return edge?.to ?? quickReplyNodeId;
 }
 
 async function upsertContact(

@@ -17,7 +17,7 @@ import type { ConditionRule } from "./node-handlers";
  * direto pro END (nunca inventamos um segundo braço editável agora — isso é
  * trabalho do editor visual futuro, seção 28). QUICK_REPLY com múltiplas
  * opções também segue linear: todas as opções levam ao mesmo próximo step
- * (o engine já funciona assim, ver lib/automation/engine.ts `nextAfter`) —
+ * (o engine já funciona assim, ver lib/automation/graph.ts `resumeTargetId`) —
  * para ramificar por opção escolhida, use um CONDITION com
  * `quick_reply_clicked` logo depois.
  */
