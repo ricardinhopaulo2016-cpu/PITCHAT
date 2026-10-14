@@ -33,6 +33,21 @@ describe("computeGraphReviewHash", () => {
   });
 });
 
+describe("computeGraphReviewHash — ordem de chaves (jsonb)", () => {
+  // O Postgres jsonb reordena as chaves; o hash não pode depender disso.
+  it("mesmo conteúdo com chaves em outra ordem produz o mesmo hash", async () => {
+    const reordered = JSON.parse(
+      '{"edges":[{"to":"end","from":"trigger"}],"nodes":[{"data":{},"type":"TRIGGER_COMMENT","id":"trigger"},{"data":{},"type":"END","id":"end"}]}'
+    ) as Graph;
+    expect(await computeGraphReviewHash(reordered)).toBe(await computeGraphReviewHash(graphA));
+  });
+
+  it("a ordem dos nós e das arestas continua importando", async () => {
+    const swapped: Graph = { ...graphA, nodes: [...graphA.nodes].reverse() };
+    expect(await computeGraphReviewHash(swapped)).not.toBe(await computeGraphReviewHash(graphA));
+  });
+});
+
 describe("isReviewConfirmed", () => {
   it("confirmado só quando confirmed=true E o hash bate exatamente", () => {
     expect(isReviewConfirmed({ confirmed: true, reviewedGraphHash: "abc" }, "abc")).toBe(true);
