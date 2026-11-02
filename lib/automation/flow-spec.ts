@@ -39,8 +39,17 @@ const conditionRuleSchema = z.discriminatedUnion("type", [
 const flowStepSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("KEYWORD_MATCH"), keywords: z.array(keywordSchema).min(1) }),
   z.object({ type: z.literal("PUBLIC_REPLY"), variants: z.array(z.string().min(1)).min(1) }),
-  z.object({ type: z.literal("PRIVATE_REPLY"), text: z.string().min(1) }),
-  z.object({ type: z.literal("SEND_MESSAGE"), text: z.string().min(1) }),
+  z.object({
+    type: z.literal("PRIVATE_REPLY"),
+    text: z.string().min(1),
+    // Botões na própria private reply (a run pausa até o clique, ver engine.ts).
+    quickReplyOptions: z.array(z.object({ key: z.string().min(1), title: z.string().min(1).max(20) })).min(1).max(13).optional(),
+  }),
+  z.object({
+    type: z.literal("SEND_MESSAGE"),
+    text: z.string().min(1),
+    button: z.object({ title: z.string().min(1).max(20), url: z.string().url() }).optional(),
+  }),
   z.object({
     type: z.literal("QUICK_REPLY"),
     text: z.string().min(1),
@@ -82,9 +91,9 @@ function stepToData(step: FlowStep): Record<string, unknown> {
     case "PUBLIC_REPLY":
       return { variants: step.variants };
     case "PRIVATE_REPLY":
-      return { text: step.text };
+      return { text: step.text, ...(step.quickReplyOptions ? { quickReplyOptions: step.quickReplyOptions } : {}) };
     case "SEND_MESSAGE":
-      return { text: step.text };
+      return { text: step.text, ...(step.button ? { button: step.button } : {}) };
     case "QUICK_REPLY":
       return { text: step.text, options: step.options };
     case "DELAY":
@@ -111,9 +120,19 @@ function dataToStep(node: GraphNode): FlowStep | null {
       if (!Array.isArray(d.variants)) return null;
       return { type: "PUBLIC_REPLY", variants: d.variants as string[] };
     case "PRIVATE_REPLY":
-      return { type: "PRIVATE_REPLY", text: String(d.text ?? "") };
+      return {
+        type: "PRIVATE_REPLY",
+        text: String(d.text ?? ""),
+        ...(Array.isArray(d.quickReplyOptions) && d.quickReplyOptions.length > 0
+          ? { quickReplyOptions: d.quickReplyOptions as { key: string; title: string }[] }
+          : {}),
+      };
     case "SEND_MESSAGE":
-      return { type: "SEND_MESSAGE", text: String(d.text ?? "") };
+      return {
+        type: "SEND_MESSAGE",
+        text: String(d.text ?? ""),
+        ...(d.button ? { button: d.button as { title: string; url: string } } : {}),
+      };
     case "QUICK_REPLY":
       if (!Array.isArray(d.options)) return null;
       return {

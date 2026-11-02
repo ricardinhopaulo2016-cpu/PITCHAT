@@ -126,3 +126,35 @@ describe("buildExampleFlow", () => {
     expect(json.toLowerCase()).not.toContain("dodo");
   });
 });
+
+describe("flow spec — botões não se perdem ao reabrir no editor", () => {
+  const steps: FlowSpec["steps"] = [
+    {
+      type: "PRIVATE_REPLY",
+      text: "Quer receber o vídeo?",
+      quickReplyOptions: [{ key: "video", title: "Me manda o vídeo" }],
+    },
+    {
+      type: "SEND_MESSAGE",
+      text: "Aqui está",
+      button: { title: "Assistir", url: "https://example.com/?utm_source=x" },
+    },
+    { type: "SEND_MESSAGE", text: "Conseguiu acessar?" },
+  ];
+
+  it("preserva quickReplyOptions e button no ida e volta do grafo", () => {
+    expect(decompileGraphToFlow(compileFlowToGraph({ steps }))).toEqual({ steps });
+  });
+
+  it("step sem botão não ganha campo vazio no grafo", () => {
+    const graph = compileFlowToGraph({ steps: [{ type: "SEND_MESSAGE", text: "oi" }] });
+    expect(graph.nodes.find((n) => n.type === "SEND_MESSAGE")?.data).toEqual({ text: "oi" });
+  });
+
+  it("recusa botão com URL inválida ou sem título", () => {
+    const bad = (button: { title: string; url: string }) =>
+      validateFlowSpec({ steps: [{ type: "SEND_MESSAGE", text: "oi", button }] }).ok;
+    expect(bad({ title: "Ver", url: "nao-e-url" })).toBe(false);
+    expect(bad({ title: "", url: "https://example.com" })).toBe(false);
+  });
+});

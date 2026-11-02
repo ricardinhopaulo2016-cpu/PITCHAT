@@ -133,15 +133,77 @@ function StepFields({ step, onChange }: { step: FlowStep; onChange: (next: FlowS
         </div>
       );
 
-    case "PRIVATE_REPLY":
+    case "PRIVATE_REPLY": {
+      const options = step.quickReplyOptions ?? [];
+      return (
+        <div className="flex flex-col gap-2">
+          <Textarea
+            rows={2}
+            value={step.text}
+            placeholder="Mensagem inicial da DM…"
+            onChange={(e) => onChange({ ...step, text: e.target.value })}
+          />
+          {options.map((opt, i) => (
+            <div key={i} className="flex gap-2">
+              <Input
+                value={opt.title}
+                maxLength={20}
+                placeholder="Botão, ex: Me manda o vídeo (máx. 20 chars)"
+                onChange={(e) => {
+                  const next = [...options];
+                  next[i] = { ...opt, title: e.target.value };
+                  onChange({ ...step, quickReplyOptions: next });
+                }}
+              />
+              <RemoveFieldButton
+                onClick={() => {
+                  const next = options.filter((_, j) => j !== i);
+                  onChange({ ...step, quickReplyOptions: next.length > 0 ? next : undefined });
+                }}
+              />
+            </div>
+          ))}
+          {options.length < 13 && (
+            <AddFieldButton
+              label="botão de resposta"
+              onClick={() =>
+                onChange({ ...step, quickReplyOptions: [...options, { key: `opt${options.length}`, title: "" }] })
+              }
+            />
+          )}
+        </div>
+      );
+    }
+
     case "SEND_MESSAGE":
       return (
-        <Textarea
-          rows={2}
-          value={step.text}
-          placeholder={step.type === "PRIVATE_REPLY" ? "Mensagem inicial da DM…" : "Texto da mensagem…"}
-          onChange={(e) => onChange({ ...step, text: e.target.value })}
-        />
+        <div className="flex flex-col gap-2">
+          <Textarea
+            rows={2}
+            value={step.text}
+            placeholder="Texto da mensagem…"
+            onChange={(e) => onChange({ ...step, text: e.target.value })}
+          />
+          {step.button ? (
+            <div className="flex gap-2">
+              <Input
+                className="w-56"
+                value={step.button.title}
+                maxLength={20}
+                placeholder="Texto do botão (máx. 20 chars)"
+                onChange={(e) => onChange({ ...step, button: { ...step.button!, title: e.target.value } })}
+              />
+              <Input
+                value={step.button.url}
+                placeholder="https://…"
+                onChange={(e) => onChange({ ...step, button: { ...step.button!, url: e.target.value } })}
+              />
+              <RemoveFieldButton onClick={() => onChange({ ...step, button: undefined })} />
+            </div>
+          ) : (
+            <AddFieldButton label="botão com link" onClick={() => onChange({ ...step, button: { title: "", url: "" } })} />
+          )}
+        </div>
       );
 
     case "QUICK_REPLY":

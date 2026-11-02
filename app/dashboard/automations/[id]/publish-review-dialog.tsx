@@ -84,7 +84,7 @@ export function PublishReviewDialog({
     [steps]
   );
   const privateReplies = useMemo(
-    () => steps.filter((s): s is Extract<FlowStep, { type: "PRIVATE_REPLY" }> => s.type === "PRIVATE_REPLY").map((s) => s.text),
+    () => steps.filter((s): s is Extract<FlowStep, { type: "PRIVATE_REPLY" }> => s.type === "PRIVATE_REPLY").map((s) => (s.quickReplyOptions?.length ? `${s.text}\n${s.quickReplyOptions.map((o) => `[${o.title}]`).join("  ")}` : s.text)),
     [steps]
   );
   const quickReplies = useMemo(
@@ -95,7 +95,7 @@ export function PublishReviewDialog({
     [steps]
   );
   const sendMessages = useMemo(
-    () => steps.filter((s): s is Extract<FlowStep, { type: "SEND_MESSAGE" }> => s.type === "SEND_MESSAGE").map((s) => s.text),
+    () => steps.filter((s): s is Extract<FlowStep, { type: "SEND_MESSAGE" }> => s.type === "SEND_MESSAGE").map((s) => (s.button ? `${s.text}\n[${s.button.title}] ${s.button.url}` : s.text)),
     [steps]
   );
   const delays = useMemo(
