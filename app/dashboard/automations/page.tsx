@@ -8,6 +8,8 @@ import { AccountTile } from "@/components/ui/account-tile";
 import { EmptyState } from "@/components/ui/empty-state";
 import { StatusIndicator, ErrorIndicator, type AutomationStatus } from "@/components/ui/status-indicator";
 import { groupAccountsByProfile, listWorkspaceInstagramAccounts } from "@/lib/social-accounts/repo";
+import { DateRangeFilter } from "@/components/ui/date-range-filter";
+import { formatRange, parseRange, rangeToIso } from "@/lib/ui/date-range";
 import { summarizeFlow } from "@/lib/automation/flow-summary";
 import type { Graph } from "@/lib/automation/graph";
 import { AutomationRowActions } from "./automation-row-actions";
@@ -23,11 +25,13 @@ type AutomationRow = {
   current_version_id: string | null;
   updated_at: string;
 };
-type RunRow = { automation_id: string; status: string; started_at: string };
 type RunStat = { total: number; errors: number };
 
-export default async function AutomationsPage({ searchParams }: { searchParams: Promise<{ ver?: string }> }) {
-  const { ver } = await searchParams;
+export default async function AutomationsPage({ searchParams }: { searchParams: Promise<{ ver?: string; de?: string; ate?: string }> }) {
+  const { ver, de, ate } = await searchParams;
+  const range = parseRange(de, ate);
+  const rangeIso = range ? rangeToIso(range) : null;
+  const rangeQuery = range ? `&de=${range.from}&ate=${range.to}` : "";
 
   const auth = await getAuthContext();
   if (!auth) redirect("/login");
@@ -47,19 +51,21 @@ export default async function AutomationsPage({ searchParams }: { searchParams: 
     listWorkspaceInstagramAccounts(admin, auth.workspace.id),
   ]);
 
-  const automationIds = (automations ?? []).map((a) => a.id);
-  const { data: runs } =
-    automationIds.length > 0
-      ? await admin.from("automation_runs").select("automation_id, status, started_at").in("automation_id", automationIds).returns<RunRow[]>()
-      : { data: [] as RunRow[] };
-
-  const runStats = new Map<string, RunStat>();
-  for (const run of runs ?? []) {
-    const stat = runStats.get(run.automation_id) ?? { total: 0, errors: 0 };
-    stat.total += 1;
-    if (run.status === "failed") stat.errors += 1;
-    runStats.set(run.automation_id, stat);
-  }
+  // Conta no banco: a lista de linhas cortaria em 1.000 assim que um post escalar.
+  const countRuns = async (automationId: string, onlyFailed: boolean) => {
+    let query = admin.from("automation_runs").select("id", { count: "exact", head: true }).eq("automation_id", automationId);
+    if (onlyFailed) query = query.eq("status", "failed");
+    if (rangeIso) query = query.gte("started_at", rangeIso.start).lt("started_at", rangeIso.end);
+    const { count } = await query;
+    return count ?? 0;
+  };
+  const stats = await Promise.all(
+    (automations ?? []).map(async (a) => {
+      const [total, errors] = await Promise.all([countRuns(a.id, false), countRuns(a.id, true)]);
+      return [a.id, { total, errors }] as const;
+    })
+  );
+  const runStats = new Map<string, RunStat>(stats);
   const statOf = (id: string): RunStat => runStats.get(id) ?? { total: 0, errors: 0 };
 
   // Sem social_account_id, a automação vale para todas as contas conectadas do perfil.
@@ -89,11 +95,16 @@ export default async function AutomationsPage({ searchParams }: { searchParams: 
     <>
       <PageHeader
         title="Automações"
-        description="O que acontece quando alguém comenta num post das suas contas."
+        description={range ? `Disparos de ${formatRange(range)}.` : "O que acontece quando alguém comenta num post das suas contas."}
         action={profiles && profiles.length > 0 ? <NewAutomationDialog profiles={profiles} accounts={accounts} /> : undefined}
       />
 
       <div className="px-6 pb-14 md:px-11">
+        {all.length > 0 && (
+          <div className="mb-4">
+            <DateRangeFilter />
+          </div>
+        )}
         {!profiles || profiles.length === 0 ? (
           <EmptyState title="Nenhum perfil cadastrado" description="Crie um perfil antes de criar uma automação." />
         ) : all.length === 0 ? (
@@ -117,7 +128,7 @@ export default async function AutomationsPage({ searchParams }: { searchParams: 
                             isSelected ? "bg-surface-2" : "hover:bg-surface-2"
                           }`}
                         >
-                          <Link href={`/dashboard/automations?ver=${automation.id}`} aria-current={isSelected ? "true" : undefined} className="flex min-w-[220px] flex-1 items-center gap-3.5">
+                          <Link href={`/dashboard/automations?ver=${automation.id}${rangeQuery}`} aria-current={isSelected ? "true" : undefined} className="flex min-w-[220px] flex-1 items-center gap-3.5">
                             <AccountTile username={usernameOf(automation) ?? automation.name} size="lg" />
                             <span className="min-w-0">
                               <span className="block truncate font-semibold text-text">{automation.name}</span>
@@ -128,9 +139,9 @@ export default async function AutomationsPage({ searchParams }: { searchParams: 
                             <span className="block text-xl font-semibold text-text">{stat.total}</span>
                             <span className="block text-xs text-text-muted">disparos</span>
                           </span>
-                          <span className="flex w-44 items-center gap-2 text-sm" style={{ color: stat.total > 0 ? "var(--success)" : "var(--warning)" }}>
+                          <span className="flex w-52 items-center gap-2 text-sm" style={{ color: stat.total > 0 ? "var(--success)" : "var(--warning)" }}>
                             <span aria-hidden="true" className="h-[7px] w-[7px] shrink-0 rounded-full" style={{ background: "currentColor" }} />
-                            {stat.total > 0 ? "Rodando" : "Sem disparo ainda"}
+                            {stat.total > 0 ? "Rodando" : range ? "Sem disparo no período" : "Sem disparo ainda"}
                           </span>
                           {stat.errors > 0 && <ErrorIndicator count={stat.errors} />}
                           <AutomationRowActions automationId={automation.id} status={automation.status} hasPublishedVersion={!!automation.current_version_id} />

@@ -138,7 +138,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
               <span className="text-xs text-text-muted">Comentários recebidos pelo PITCHAT</span>
             </div>
             <div>
-              <p className="text-[72px] font-semibold leading-none tracking-[-0.04em] text-signal">{number.format(best)}</p>
+              <p className="text-[72px] font-semibold leading-none tracking-[-0.04em] text-signal tabular-nums">{number.format(best)}</p>
               <p className="mt-2.5 text-text-secondary">EU QUERO no melhor post</p>
             </div>
             {topPosts.length === 0 ? (
@@ -236,8 +236,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                             {status.label}
                           </span>
                         </td>
-                        <td className="px-3 text-right text-text">{number.format(runs)}</td>
-                        <td className="px-3 text-right text-text">{number.format(matched)}</td>
+                        <td className="px-3 text-right tabular-nums text-text">{number.format(runs)}</td>
+                        <td className="px-3 text-right tabular-nums text-text">{number.format(matched)}</td>
                         <td className="px-3 text-sm text-text-secondary">{next ? formatPostTime(next.scheduled_at) : "Nada agendado"}</td>
                         <td className="px-7 text-sm text-text-secondary">{last ? formatPostTime(last.published_at ?? last.scheduled_at) : "Nenhum ainda"}</td>
                       </tr>

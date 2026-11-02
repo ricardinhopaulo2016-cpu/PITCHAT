@@ -62,7 +62,7 @@ export default async function InboxPage({
               action={
                 <Link
                   href="/dashboard/inbox"
-                  className="inline-flex h-9 items-center justify-center rounded-[var(--radius-button)] bg-signal px-3.5 text-sm font-medium text-signal-on transition-colors duration-[var(--motion-fast)] hover:bg-signal-hover"
+                  className="inline-flex h-11 items-center justify-center rounded-[var(--radius-button)] bg-signal px-3.5 text-sm font-medium text-signal-on transition-colors duration-[var(--motion-fast)] hover:bg-signal-hover"
                 >
                   Ver todos os canais
                 </Link>
@@ -124,7 +124,7 @@ export default async function InboxPage({
     <>
       <PageHeader title="Caixa de entrada" description="Conversas com quem comentou ou mandou mensagem." />
 
-      <div className="grid h-[calc(100dvh-14rem)] min-h-[28rem] grid-cols-1 overflow-hidden border-t border-border-subtle md:grid-cols-[300px_minmax(0,1fr)] lg:grid-cols-[300px_minmax(0,1fr)_300px] 2xl:grid-cols-[340px_minmax(0,1fr)_340px]">
+      <div className="grid h-[calc(100dvh-14rem)] min-h-[28rem] md:h-[calc(100dvh-8.75rem)] grid-cols-1 overflow-hidden border-t border-border-subtle md:grid-cols-[300px_minmax(0,1fr)] lg:grid-cols-[300px_minmax(0,1fr)_300px] 2xl:grid-cols-[340px_minmax(0,1fr)_340px]">
         {/* Coluna 1 — lista de conversas */}
         <div className={`min-h-0 flex-col overflow-y-auto border-border-subtle md:flex md:border-r ${conversationId ? "hidden" : "flex"}`}>
           <ConversationList conversations={conversations} selectedId={selected?.id} channelId={channelId} />

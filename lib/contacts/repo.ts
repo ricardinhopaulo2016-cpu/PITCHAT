@@ -1,6 +1,38 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-const LIST_LIMIT = 100;
+export const CONTACTS_PAGE_SIZE = 100;
+const LIST_LIMIT = CONTACTS_PAGE_SIZE;
+/** Teto de contatos ao filtrar por conta: os ids vão na URL da consulta, e URL longa demais é recusada. */
+const CHANNEL_SCOPE_LIMIT = 300;
+
+type ContactFilters = { socialAccountId?: string | null; search?: string | null; firstSeen?: { start: string; end: string } | null };
+
+/** Contatos com conversa na conta. `null` = sem filtro de conta. */
+async function channelContactIds(admin: SupabaseClient, workspaceId: string, socialAccountId: string | null | undefined, limit: number): Promise<string[] | null> {
+  if (!socialAccountId) return null;
+  const { data } = await admin
+    .from("conversations")
+    .select("contact_id")
+    .eq("workspace_id", workspaceId)
+    .eq("social_account_id", socialAccountId)
+    .limit(limit);
+  return [...new Set((data ?? []).map((c) => c.contact_id as string))];
+}
+
+/** Total real com os mesmos filtros da lista, para a tela dizer quantos contatos existem de verdade. */
+export async function countContacts(admin: SupabaseClient, workspaceId: string, opts: ContactFilters = {}): Promise<number> {
+  let query = admin.from("contacts").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId);
+  const pattern = opts.search ? contactSearchPattern(opts.search) : null;
+  if (pattern) query = query.ilike("username", pattern);
+  if (opts.firstSeen) query = query.gte("first_seen_at", opts.firstSeen.start).lt("first_seen_at", opts.firstSeen.end);
+  const ids = await channelContactIds(admin, workspaceId, opts.socialAccountId, CHANNEL_SCOPE_LIMIT);
+  if (ids) {
+    if (ids.length === 0) return 0;
+    query = query.in("id", ids);
+  }
+  const { count } = await query;
+  return count ?? 0;
+}
 
 export type ContactListItem = {
   id: string;
@@ -14,16 +46,30 @@ export type ContactListItem = {
   tags: string[];
 };
 
+/**
+ * Padrão de busca por @username. Tira o @ que a pessoa digita e neutraliza os
+ * curingas do LIKE, para "_" buscar um underline de verdade.
+ */
+export function contactSearchPattern(search: string): string | null {
+  const clean = search.trim().replace(/^@+/, "");
+  if (!clean) return null;
+  return `%${clean.replace(/[\\%_]/g, (char) => `\\${char}`)}%`;
+}
+
 /** Lista contatos do workspace — 3-4 queries fixas (contacts, [channel scoping], conversations+social_account, contact_tags), nunca N+1. */
 export async function listContacts(
   admin: SupabaseClient,
   workspaceId: string,
-  opts: { socialAccountId?: string | null } = {}
+  opts: ContactFilters & { page?: number } = {}
 ): Promise<ContactListItem[]> {
   let query = admin
     .from("contacts")
     .select("id, username, avatar_url, platform, first_seen_at, last_seen_at")
     .eq("workspace_id", workspaceId);
+
+  const pattern = opts.search ? contactSearchPattern(opts.search) : null;
+  if (pattern) query = query.ilike("username", pattern);
+  if (opts.firstSeen) query = query.gte("first_seen_at", opts.firstSeen.start).lt("first_seen_at", opts.firstSeen.end);
 
   // Filtro do Channel Switcher (D1): resolve pra "contatos com >=1 conversation
   // nesse social_account" ANTES do .limit() — nunca buscar os 100 mais
@@ -35,13 +81,16 @@ export async function listContacts(
       .select("contact_id")
       .eq("workspace_id", workspaceId)
       .eq("social_account_id", opts.socialAccountId)
-      .limit(LIST_LIMIT);
+      // Com busca, período ou paginação, o contato pode estar fora das 100 conversas mais recentes.
+      .limit(pattern || opts.firstSeen || opts.page ? CHANNEL_SCOPE_LIMIT : LIST_LIMIT);
     const channelContactIds = [...new Set((channelConversations ?? []).map((c) => c.contact_id as string))];
     if (channelContactIds.length === 0) return []; // canal sem nenhum contato ainda — nunca ambia pra "todos"
     query = query.in("id", channelContactIds);
   }
 
-  const { data: contacts } = await query.order("last_seen_at", { ascending: false }).limit(LIST_LIMIT);
+  const ordered = query.order("last_seen_at", { ascending: false });
+  const page = opts.page ?? 0;
+  const { data: contacts } = await (page > 0 ? ordered.range(page * LIST_LIMIT, page * LIST_LIMIT + LIST_LIMIT - 1) : ordered.limit(LIST_LIMIT));
 
   if (!contacts || contacts.length === 0) return [];
   const contactIds = contacts.map((c) => c.id as string);

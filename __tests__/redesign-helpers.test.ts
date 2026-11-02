@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { accountIdentity } from "@/lib/ui/account-identity";
+import { contactSearchPattern } from "@/lib/contacts/repo";
+import { monthGrid, parseRange, rangePresets, rangeToIso, shiftMonth, formatRange } from "@/lib/ui/date-range";
 import { summarizeFlow } from "@/lib/automation/flow-summary";
 import type { Graph } from "@/lib/automation/graph";
 import { isDayKey, shiftWeek, weekOf } from "@/app/dashboard/publishing/format";
@@ -76,5 +78,44 @@ describe("summarizeFlow", () => {
   });
   it("devolve vazio sem grafo", () => {
     expect(summarizeFlow(null)).toEqual([]);
+  });
+});
+
+describe("contactSearchPattern", () => {
+  it("tira o @ e busca em qualquer parte do username", () => {
+    expect(contactSearchPattern("  @maria ")).toBe("%maria%");
+  });
+  it("trata underline e porcentagem como texto, não curinga", () => {
+    expect(contactSearchPattern("a_b%")).toBe("%a\\_b\\%%");
+  });
+  it("busca vazia não filtra", () => {
+    expect(contactSearchPattern("   ")).toBeNull();
+    expect(contactSearchPattern("@")).toBeNull();
+  });
+});
+
+describe("período do calendário", () => {
+  it("corrige ordem invertida e ignora lixo da URL", () => {
+    expect(parseRange("2026-11-10", "2026-11-01")).toEqual({ from: "2026-11-01", to: "2026-11-10" });
+    expect(parseRange("abc", "2026-02-31")).toBeNull();
+    expect(parseRange("2026-11-05", null)).toEqual({ from: "2026-11-05", to: "2026-11-05" });
+  });
+  it("usa o dia de Brasília e inclui o último dia inteiro", () => {
+    expect(rangeToIso({ from: "2026-11-01", to: "2026-11-01" })).toEqual({ start: "2026-11-01T03:00:00.000Z", end: "2026-11-02T03:00:00.000Z" });
+  });
+  it("o mês passado atravessa a virada do ano", () => {
+    const preset = rangePresets("2026-01-15").find((p) => p.label === "Mês passado");
+    expect(preset?.range).toEqual({ from: "2025-12-01", to: "2025-12-31" });
+  });
+  it("a grade do mês começa na segunda e cobre o mês inteiro", () => {
+    const weeks = monthGrid("2026-11");
+    expect(weeks[0][0]).toBe("2026-10-26");
+    expect(weeks.flat()).toContain("2026-11-30");
+    expect(weeks.every((w) => w.length === 7)).toBe(true);
+  });
+  it("shiftMonth e formatRange", () => {
+    expect(shiftMonth("2026-01", -1)).toBe("2025-12");
+    expect(formatRange({ from: "2026-11-01", to: "2026-11-30" })).toBe("01/11 a 30/11/2026");
+    expect(formatRange({ from: "2026-11-01", to: "2026-11-01" })).toBe("01/11/2026");
   });
 });

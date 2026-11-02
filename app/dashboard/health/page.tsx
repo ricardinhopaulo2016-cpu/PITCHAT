@@ -64,7 +64,7 @@ function Stat({ label, value, color }: { label: string; value: number | string; 
       <span className="font-mono text-xl font-medium tabular-nums" style={{ color: color ?? "var(--text)" }}>
         {value}
       </span>
-      <span className="text-xs uppercase tracking-wide text-text-muted">{label}</span>
+      <span className="text-xs text-text-muted">{label}</span>
     </div>
   );
 }
@@ -73,7 +73,7 @@ function SectionPanel({ title, children, caption }: { title: string; children: R
   return (
     <div className="overflow-hidden rounded-[var(--radius-panel-lg)] border border-border-subtle bg-surface-1">
       <div className="border-b border-border-subtle bg-surface-1 px-5 py-2.5">
-        <p className="text-xs font-medium uppercase tracking-wide text-text-muted">{title}</p>
+        <p className="text-lg font-semibold text-text">{title}</p>
         {caption && <p className="mt-0.5 text-xs text-text-muted">{caption}</p>}
       </div>
       {children}
@@ -118,7 +118,7 @@ export default async function HealthDashboardPage({
             action={
               <Link
                 href={buildHref("/dashboard/health", windowParam ? { window: windowParam } : {})}
-                className="inline-flex h-9 items-center justify-center rounded-[var(--radius-button)] bg-signal px-3.5 text-sm font-medium text-signal-on transition-colors duration-[var(--motion-fast)] hover:bg-signal-hover"
+                className="inline-flex h-11 items-center justify-center rounded-[var(--radius-button)] bg-signal px-3.5 text-sm font-medium text-signal-on transition-colors duration-[var(--motion-fast)] hover:bg-signal-hover"
               >
                 Ver todos os canais
               </Link>
@@ -249,11 +249,11 @@ export default async function HealthDashboardPage({
   return (
     <>
       <PageHeader
-        title="Health"
+        title="Saúde"
         description={
           channel
             ? `Estado operacional filtrado por @${channel.username ?? "conta"} — dados reais, nunca simulados.`
-            : "Estado operacional do PITCHAT — dados reais, nunca simulados."
+            : "Como o PITCHAT está funcionando agora, com dados reais."
         }
         action={
           <div className="flex items-center gap-1 rounded-[var(--radius-panel-sm)] border border-border-subtle bg-surface-1 p-0.5">
@@ -275,17 +275,17 @@ export default async function HealthDashboardPage({
       <div className="flex flex-col gap-6 px-6 pb-10 md:px-11">
         <SectionPanel title="Status geral">
           <ul className="divide-y divide-border-subtle">
-            <StatusRow label="Webhook" status={webhookHealth.status} reason={webhookHealth.reason} />
-            <StatusRow label="Automations" status={automationHealth.status} reason={automationHealth.reason} />
-            <StatusRow label="Instagram Accounts" status={socialHealth.status} reason={socialHealth.reason} />
-            <StatusRow label="Token Maintenance" status={tokenHealth.status} reason={tokenHealth.reason} />
-            <StatusRow label="QStash" status={qstashHealth.status} reason={qstashHealth.reason} />
+            <StatusRow label="Eventos do Instagram" status={webhookHealth.status} reason={webhookHealth.reason} />
+            <StatusRow label="Automações" status={automationHealth.status} reason={automationHealth.reason} />
+            <StatusRow label="Contas do Instagram" status={socialHealth.status} reason={socialHealth.reason} />
+            <StatusRow label="Renovação de acesso" status={tokenHealth.status} reason={tokenHealth.reason} />
+            <StatusRow label="Fila de tarefas" status={qstashHealth.status} reason={qstashHealth.reason} />
           </ul>
         </SectionPanel>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <SectionPanel
-            title="Webhook Events"
+            title="Eventos do Instagram"
             caption={
               channel
                 ? `Filtrado por @${channel.username ?? "conta"} (webhook_events.social_account_id).`
@@ -293,10 +293,10 @@ export default async function HealthDashboardPage({
             }
           >
             <div className="flex flex-wrap">
-              <Stat label="Processed" value={webhookHealth.processed} color="var(--success)" />
-              <Stat label="Pending" value={webhookHealth.pending} color={webhookHealth.oldestPendingAgeMinutes ? "var(--warning)" : undefined} />
-              <Stat label="Failed" value={webhookHealth.failed} color={webhookHealth.failed > 0 ? "var(--danger)" : undefined} />
-              <Stat label="Invalid signature" value={webhookHealth.invalidSignature} color={webhookHealth.invalidSignature > 0 ? "var(--danger)" : undefined} />
+              <Stat label="Processados" value={webhookHealth.processed} color="var(--success)" />
+              <Stat label="Pendentes" value={webhookHealth.pending} color={webhookHealth.oldestPendingAgeMinutes ? "var(--warning)" : undefined} />
+              <Stat label="Com falha" value={webhookHealth.failed} color={webhookHealth.failed > 0 ? "var(--danger)" : undefined} />
+              <Stat label="Assinatura inválida" value={webhookHealth.invalidSignature} color={webhookHealth.invalidSignature > 0 ? "var(--danger)" : undefined} />
             </div>
             {(webhookHealth.socialAccountNotFoundCount > 0 || webhookHealth.consecutiveFailures > 0) && (
               <div className="border-t border-border-subtle px-5 py-3 text-xs text-text-secondary">
@@ -306,12 +306,12 @@ export default async function HealthDashboardPage({
             )}
           </SectionPanel>
 
-          <SectionPanel title="Automation Runs" caption={channel ? `Runs de conversas recebidas por @${channel.username ?? "conta"}.` : undefined}>
+          <SectionPanel title="Disparos de automação" caption={channel ? `Runs de conversas recebidas por @${channel.username ?? "conta"}.` : undefined}>
             <div className="flex flex-wrap">
-              <Stat label="Running" value={automationHealth.running} />
-              <Stat label="Waiting" value={automationHealth.waiting} />
-              <Stat label="Completed" value={automationHealth.completed} color="var(--success)" />
-              <Stat label="Failed" value={automationHealth.failed} color={automationHealth.failed > 0 ? "var(--danger)" : undefined} />
+              <Stat label="Rodando" value={automationHealth.running} />
+              <Stat label="Esperando" value={automationHealth.waiting} />
+              <Stat label="Concluídos" value={automationHealth.completed} color="var(--success)" />
+              <Stat label="Com falha" value={automationHealth.failed} color={automationHealth.failed > 0 ? "var(--danger)" : undefined} />
             </div>
             <div className="border-t border-border-subtle px-5 py-3 text-xs text-text-secondary">
               <p>
@@ -324,7 +324,7 @@ export default async function HealthDashboardPage({
             </div>
           </SectionPanel>
 
-          <SectionPanel title="Instagram Accounts">
+          <SectionPanel title="Contas do Instagram">
             {socialHealth.accounts.length === 0 ? (
               <p className="px-5 py-4 text-sm text-text-muted">{channel ? "Conta não encontrada." : "Nenhuma conta conectada ainda."}</p>
             ) : (
@@ -351,11 +351,11 @@ export default async function HealthDashboardPage({
             )}
           </SectionPanel>
 
-          <SectionPanel title="Token Maintenance" caption={channel ? `payload.socialAccountId = @${channel.username ?? "conta"}.` : undefined}>
+          <SectionPanel title="Renovação de acesso" caption={channel ? `payload.socialAccountId = @${channel.username ?? "conta"}.` : undefined}>
             <div className="flex flex-wrap">
-              <Stat label="Success" value={tokenHealth.outcomeCounts.refresh_success} color="var(--success)" />
-              <Stat label="Retryable fail" value={tokenHealth.outcomeCounts.refresh_retryable_failure} color={tokenHealth.outcomeCounts.refresh_retryable_failure > 0 ? "var(--warning)" : undefined} />
-              <Stat label="Reauth required" value={tokenHealth.outcomeCounts.reauth_required} color={tokenHealth.outcomeCounts.reauth_required > 0 ? "var(--danger)" : undefined} />
+              <Stat label="Sucesso" value={tokenHealth.outcomeCounts.refresh_success} color="var(--success)" />
+              <Stat label="Falha recuperável" value={tokenHealth.outcomeCounts.refresh_retryable_failure} color={tokenHealth.outcomeCounts.refresh_retryable_failure > 0 ? "var(--warning)" : undefined} />
+              <Stat label="Precisa reconectar" value={tokenHealth.outcomeCounts.reauth_required} color={tokenHealth.outcomeCounts.reauth_required > 0 ? "var(--danger)" : undefined} />
               <Stat label="Non-retryable fail" value={tokenHealth.outcomeCounts.refresh_non_retryable_failure} color={tokenHealth.outcomeCounts.refresh_non_retryable_failure > 0 ? "var(--danger)" : undefined} />
             </div>
           </SectionPanel>
@@ -373,13 +373,13 @@ export default async function HealthDashboardPage({
         >
           <div className="flex flex-wrap">
             <Stat label="Total" value={qstashHealth.total} />
-            <Stat label="Succeeded" value={qstashHealth.succeeded} color="var(--success)" />
-            <Stat label="Failed" value={qstashHealth.failed} color={qstashHealth.failed > 0 ? "var(--danger)" : undefined} />
+            <Stat label="Com sucesso" value={qstashHealth.succeeded} color="var(--success)" />
+            <Stat label="Com falha" value={qstashHealth.failed} color={qstashHealth.failed > 0 ? "var(--danger)" : undefined} />
           </div>
         </SectionPanel>
 
         <SectionPanel
-          title="Incident Rail"
+          title="Incidentes"
           caption={incidents.length === 0 ? "Nenhum sinal de atenção na janela." : channel ? `Só incidentes atribuíveis a @${channel.username ?? "conta"}.` : undefined}
         >
           {incidents.length > 0 && (

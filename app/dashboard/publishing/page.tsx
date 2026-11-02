@@ -6,6 +6,8 @@ import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { PageHeader } from "@/components/app-shell/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
 import { AccountTile } from "@/components/ui/account-tile";
+import { DateRangeFilter } from "@/components/ui/date-range-filter";
+import { formatRange, parseRange, rangeToIso } from "@/lib/ui/date-range";
 import { accountCanPublish } from "@/lib/publishing/validate";
 import { friendlyPublishError } from "@/lib/publishing/messages";
 import type { PublishError } from "@/lib/publishing/engine";
@@ -41,8 +43,9 @@ function today(): string {
   return dayKey(new Date().toISOString());
 }
 
-export default async function PublishingPage({ searchParams }: { searchParams: Promise<{ semana?: string; channel?: string }> }) {
-  const { semana, channel } = await searchParams;
+export default async function PublishingPage({ searchParams }: { searchParams: Promise<{ semana?: string; channel?: string; de?: string; ate?: string }> }) {
+  const { semana, channel, de, ate } = await searchParams;
+  const range = parseRange(de, ate);
   const reference = isDayKey(semana) ? semana : today();
   const week = weekOf(reference);
 
@@ -54,11 +57,11 @@ export default async function PublishingPage({ searchParams }: { searchParams: P
     return <p className="p-8 text-sm text-danger">O sistema ainda não está configurado.</p>;
   }
 
-  // A grade pode estar numa semana antiga: busca desde o que vier primeiro.
-  const weekStart = `${week[0].key}T00:00:00-03:00`;
-  const history = historyStart();
-  const since = new Date(weekStart).toISOString() < history ? new Date(weekStart).toISOString() : history;
-  const [{ data: accountRows }, { data: assetRows }, { data: postRows, error: postsError }] = await Promise.all([
+  const POST_COLUMNS =
+    "id, media_type, caption, scheduled_at, published_at, status, permalink, last_error, social_account_id, account:social_accounts(username), asset:media_assets(original_filename)";
+  const weekIso = rangeToIso({ from: week[0].key, to: week[6].key });
+  const listIso = range ? rangeToIso(range) : null;
+  const [{ data: accountRows }, { data: assetRows }, { data: postRows, error: postsError }, { data: weekRows }] = await Promise.all([
     admin
       .from("social_accounts")
       .select("id, username, status, permissions")
@@ -75,11 +78,20 @@ export default async function PublishingPage({ searchParams }: { searchParams: P
       .limit(ASSET_LIMIT),
     admin
       .from("scheduled_posts")
-      .select(
-        "id, media_type, caption, scheduled_at, published_at, status, permalink, last_error, social_account_id, account:social_accounts(username), asset:media_assets(original_filename)"
-      )
+      .select(POST_COLUMNS)
       .eq("workspace_id", auth.workspace.id)
-      .gte("scheduled_at", since)
+      .gte("scheduled_at", listIso?.start ?? historyStart())
+      .lt("scheduled_at", listIso?.end ?? "9999-12-31")
+      .neq("status", "canceled")
+      .order("scheduled_at", { ascending: true })
+      .limit(POST_LIMIT)
+      .returns<PostRow[]>(),
+    admin
+      .from("scheduled_posts")
+      .select(POST_COLUMNS)
+      .eq("workspace_id", auth.workspace.id)
+      .gte("scheduled_at", weekIso.start)
+      .lt("scheduled_at", weekIso.end)
       .neq("status", "canceled")
       .order("scheduled_at", { ascending: true })
       .limit(POST_LIMIT)
@@ -109,6 +121,7 @@ export default async function PublishingPage({ searchParams }: { searchParams: P
   const accounts = (accountRows ?? []).map((a) => ({ id: a.id, username: a.username, canPublish: accountCanPublish(a) }));
 
   const posts = (postRows ?? []).filter((p) => !channel || p.social_account_id === channel);
+  const gridPosts = (weekRows ?? []).filter((p) => !channel || p.social_account_id === channel);
   const gridAccounts = channel ? accounts.filter((a) => a.id === channel) : accounts;
   const channelQuery = channel ? `&channel=${encodeURIComponent(channel)}` : "";
   const isThisWeek = week.some((d) => d.key === today());
@@ -118,7 +131,7 @@ export default async function PublishingPage({ searchParams }: { searchParams: P
 
   return (
     <>
-      <AutoRefreshWhilePending active={posts.some((p) => p.status === "processing")} />
+      <AutoRefreshWhilePending active={[...posts, ...gridPosts].some((p) => p.status === "processing")} />
 
       <PageHeader
         title="Publicar"
@@ -145,7 +158,12 @@ export default async function PublishingPage({ searchParams }: { searchParams: P
 
       <div className="grid grid-cols-1 items-start gap-4 px-6 pb-14 md:px-11 xl:grid-cols-[minmax(0,1fr)_400px]">
         <div className="flex min-w-0 flex-col gap-7">
-          <WeekGrid week={week} accounts={gridAccounts} posts={posts} todayKey={today()} />
+          <WeekGrid week={week} accounts={gridAccounts} posts={gridPosts} todayKey={today()} />
+
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-2xl font-semibold tracking-[-0.02em] text-text">Registro</h2>
+            <DateRangeFilter emptyLabel={`Últimos ${HISTORY_DAYS} dias e a fila`} />
+          </div>
 
           {postsError && <p className="text-sm text-danger">Não foi possível carregar os posts agora.</p>}
 
@@ -157,7 +175,7 @@ export default async function PublishingPage({ searchParams }: { searchParams: P
 
         <Section title="Na fila" count={upcoming.length}>
           {upcoming.length === 0 ? (
-            <EmptyState title="Nada agendado" description="Os próximos posts aparecem aqui, separados por dia." />
+            <EmptyState title="Nada agendado" description={range ? "Nenhum post agendado neste período." : "Os próximos posts aparecem aqui, separados por dia."} />
           ) : (
             <div className="flex flex-col gap-5">
               {groupByDay(upcoming).map((group) => (
@@ -171,7 +189,7 @@ export default async function PublishingPage({ searchParams }: { searchParams: P
         </Section>
 
         {published.length > 0 && (
-          <Section title={`Publicados nos últimos ${HISTORY_DAYS} dias`} count={published.length}>
+          <Section title={range ? `Publicados em ${formatRange(range)}` : `Publicados nos últimos ${HISTORY_DAYS} dias`} count={published.length}>
             <PostList posts={published} />
           </Section>
         )}
@@ -204,17 +222,17 @@ const CHIP = {
 
 /** Uma linha por perfil, uma coluna por dia: dia vazio aparece vazio, é assim que a cadência furada fica visível. */
 function WeekGrid({ week, accounts, posts, todayKey }: { week: WeekDay[]; accounts: { id: string; username: string | null }[]; posts: PostRow[]; todayKey: string }) {
-  const columns = "112px repeat(7, minmax(0, 1fr))";
+  const columns = "150px repeat(7, minmax(0, 1fr))";
   return (
     <section className="overflow-hidden rounded-[var(--radius-panel-lg)] border border-border-subtle bg-surface-1" aria-label="Grade da semana">
       <div className="overflow-x-auto">
-        <div className="min-w-[700px]">
+        <div className="min-w-[760px]">
           <div className="grid border-b border-border-subtle" style={{ gridTemplateColumns: columns }}>
             <span />
             {week.map((d) => (
               <div key={d.key} className="border-l border-border-subtle px-2 py-3">
                 <p className="text-xs text-text-muted">{d.weekday}</p>
-                <p className={`text-xl font-semibold ${d.key === todayKey ? "text-signal" : "text-text"}`}>{d.day}</p>
+                <p className={`text-xl font-semibold tabular-nums ${d.key === todayKey ? "text-signal" : "text-text"}`}>{d.day}</p>
               </div>
             ))}
           </div>

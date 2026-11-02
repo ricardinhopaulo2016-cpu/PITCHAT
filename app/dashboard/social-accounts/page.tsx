@@ -3,8 +3,8 @@ import { getAuthContext } from "@/lib/auth/session";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { needsRefresh } from "@/lib/meta/oauth";
 import { PageHeader } from "@/components/app-shell/page-header";
+import { AccountTile } from "@/components/ui/account-tile";
 import { EmptyState } from "@/components/ui/empty-state";
-import { ChannelIcon } from "@/components/icons/pitchat";
 import { DisconnectButton } from "./disconnect-button";
 import { groupAccountsByProfile, listWorkspaceInstagramAccounts, type InstagramAccount } from "@/lib/social-accounts/repo";
 
@@ -48,10 +48,10 @@ function AccountRow({ account }: { account: InstagramAccount }) {
   const needsReconnect = account.status !== "connected" && account.status !== "pending";
 
   return (
-    <li className="flex items-center gap-4 py-3.5">
-      <ChannelIcon className="h-5 w-5 shrink-0 text-text-muted" />
+    <li className="flex flex-wrap items-center gap-4 px-6 py-3.5">
+      <AccountTile username={account.username} size="lg" />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-text">{account.username ? `@${account.username}` : "Conta sem username"}</p>
+        <p className="truncate font-semibold text-text">{account.username ? `@${account.username}` : "Conta sem username"}</p>
         <p className="mt-0.5 flex items-center gap-1.5 text-xs" style={{ color: STATUS_COLOR[account.status] }}>
           <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: STATUS_COLOR[account.status] }} />
           {STATUS_LABEL[account.status] ?? account.status}
@@ -130,7 +130,7 @@ export default async function SocialAccountsPage({
         {!profiles || profiles.length === 0 ? (
           <EmptyState title="Nenhum perfil cadastrado" description="Crie um perfil antes de conectar uma conta do Instagram." />
         ) : (
-          <div className="flex flex-col">
+          <div className="flex flex-col gap-4">
             {profiles.map((profile) => {
               const profileAccounts = accountsByProfile.get(profile.id) ?? [];
               const activeCount = activeCountByProfile.get(profile.id) ?? 0;
@@ -141,11 +141,11 @@ export default async function SocialAccountsPage({
                 <section
                   key={profile.id}
                   aria-labelledby={`profile-${profile.id}`}
-                  className="border-t border-border-subtle py-5 first:border-t-0 first:pt-0"
+                  className="overflow-hidden rounded-[var(--radius-panel-lg)] border border-border-subtle bg-surface-1"
                 >
-                  <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-5">
                     <div>
-                      <h2 id={`profile-${profile.id}`} className="text-[15px] font-semibold text-text">
+                      <h2 id={`profile-${profile.id}`} className="text-lg font-semibold text-text">
                         {profile.name}
                       </h2>
                       <p className="text-xs text-text-muted">Instagram · {countLabel}</p>
@@ -153,14 +153,14 @@ export default async function SocialAccountsPage({
                     {profileAccounts.length === 0 ? (
                       <a
                         href={`/api/auth/meta/start?profileId=${profile.id}`}
-                        className="inline-flex h-9 items-center justify-center rounded-[var(--radius-button)] bg-signal px-3.5 text-sm font-medium text-signal-on transition-colors duration-[var(--motion-fast)] hover:bg-signal-hover"
+                        className="inline-flex h-11 items-center justify-center rounded-[var(--radius-button)] bg-signal px-3.5 text-sm font-medium text-signal-on transition-colors duration-[var(--motion-fast)] hover:bg-signal-hover"
                       >
                         Conectar Instagram
                       </a>
                     ) : (
                       <a
                         href={`/api/auth/meta/start?profileId=${profile.id}`}
-                        className="inline-flex h-9 items-center justify-center rounded-[var(--radius-button)] border border-border bg-surface-2 px-3 text-sm font-medium text-text transition-colors duration-[var(--motion-fast)] hover:border-border-strong"
+                        className="inline-flex h-11 items-center justify-center rounded-[var(--radius-button)] border border-border bg-surface-2 px-3 text-sm font-medium text-text transition-colors duration-[var(--motion-fast)] hover:border-border-strong"
                       >
                         Adicionar conta Instagram
                       </a>
@@ -168,7 +168,7 @@ export default async function SocialAccountsPage({
                   </div>
 
                   {profileAccounts.length > 0 && (
-                    <ul className="mt-2 divide-y divide-border-subtle border-y border-border-subtle">
+                    <ul className="divide-y divide-border-subtle border-t border-border-subtle">
                       {profileAccounts.map((account) => (
                         <AccountRow key={account.id} account={account} />
                       ))}
@@ -176,9 +176,9 @@ export default async function SocialAccountsPage({
                   )}
 
                   {activeCount > 0 && profileAccounts.length > 0 && (
-                    <p className="mt-2 text-xs text-text-muted">
+                    <p className="border-t border-border-subtle px-6 py-3.5 text-sm text-text-muted">
                       {activeCount} {activeCount === 1 ? "automação ativa" : "automações ativas"} neste perfil
-                      {profileAccounts.length > 1 ? " — valem para todas as contas acima." : "."}
+                      .
                     </p>
                   )}
                 </section>
