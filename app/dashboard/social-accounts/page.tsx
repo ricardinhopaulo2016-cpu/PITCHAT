@@ -177,8 +177,7 @@ export default async function SocialAccountsPage({
 
                   {activeCount > 0 && profileAccounts.length > 0 && (
                     <p className="border-t border-border-subtle px-6 py-3.5 text-sm text-text-muted">
-                      {activeCount} {activeCount === 1 ? "automação ativa" : "automações ativas"} neste perfil
-                      .
+                      {activeCount} {activeCount === 1 ? "automação ativa" : "automações ativas"} neste perfil.
                     </p>
                   )}
                 </section>
