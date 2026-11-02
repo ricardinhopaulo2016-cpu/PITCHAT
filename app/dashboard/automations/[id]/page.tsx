@@ -43,14 +43,14 @@ export default async function AutomationEditorPage({ params }: { params: Promise
 
   return (
     <>
-      <div className="px-6 pb-5 pt-7 md:px-8 md:pt-8">
+      <div className="px-6 pb-5 pt-7 md:px-11 md:pt-8">
         <Link href="/dashboard/automations" className="mb-4 inline-flex items-center gap-1 text-sm text-text-secondary hover:text-text">
-          <ChevronLeft className="h-3.5 w-3.5" /> Automations
+          <ChevronLeft className="h-3.5 w-3.5" /> Automações
         </Link>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-[26px] font-semibold tracking-[-0.025em] text-text">{automation.name}</h1>
+              <h1 className="text-[36px] font-semibold leading-[1.1] tracking-[-0.025em] text-text">{automation.name}</h1>
               <StatusIndicator status={automation.status as AutomationStatus} />
             </div>
             <p className="mt-1 text-sm text-text-secondary">

@@ -12,7 +12,7 @@ Input.displayName = "Input";
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement>>(
   ({ className, ...rest }, ref) => (
-    <textarea ref={ref} className={`${fieldBase} py-2 ${className ?? ""}`} {...rest} />
+    <textarea ref={ref} className={`${fieldBase} min-h-20 py-2.5 [field-sizing:content] ${className ?? ""}`} {...rest} />
   )
 );
 Textarea.displayName = "Textarea";

@@ -15,16 +15,16 @@ import { PublishReviewDialog } from "./publish-review-dialog";
 import type { ProfileAccountSummary } from "@/lib/social-accounts/repo";
 
 const STEP_LABELS: Record<FlowStepType, string> = {
-  KEYWORD_MATCH: "Keyword Match",
-  PUBLIC_REPLY: "Public Reply",
-  PRIVATE_REPLY: "Private Reply / DM",
-  SEND_MESSAGE: "Send Message",
-  QUICK_REPLY: "Quick Reply",
-  DELAY: "Delay",
-  CONDITION: "Condition",
-  ADD_TAG: "Add Tag",
-  REMOVE_TAG: "Remove Tag",
-  SET_CUSTOM_FIELD: "Set Custom Field",
+  KEYWORD_MATCH: "Palavra-chave",
+  PUBLIC_REPLY: "Resposta pública",
+  PRIVATE_REPLY: "Primeira DM",
+  SEND_MESSAGE: "Enviar mensagem",
+  QUICK_REPLY: "Mensagem com opções",
+  DELAY: "Espera",
+  CONDITION: "Condição",
+  ADD_TAG: "Adicionar tag",
+  REMOVE_TAG: "Remover tag",
+  SET_CUSTOM_FIELD: "Preencher campo",
 };
 
 /** Marker da Signal Rail por tipo de step — ver docs/PITCHAT_DESIGN_SYSTEM.md §10/§13. */
@@ -43,9 +43,9 @@ const STEP_MARKER: Record<FlowStepType, SignalMarkerType> = {
 
 /** Categorias do menu "+" (seção 29 do briefing) — só nodes já suportados, nunca inventar feature. */
 const ADD_STEP_CATEGORIES: { label: string; types: FlowStepType[] }[] = [
-  { label: "Logic", types: ["KEYWORD_MATCH", "CONDITION"] },
-  { label: "Message", types: ["PUBLIC_REPLY", "PRIVATE_REPLY", "SEND_MESSAGE", "QUICK_REPLY"] },
-  { label: "Data", types: ["ADD_TAG", "REMOVE_TAG", "SET_CUSTOM_FIELD"] },
+  { label: "Lógica", types: ["KEYWORD_MATCH", "CONDITION"] },
+  { label: "Mensagem", types: ["PUBLIC_REPLY", "PRIVATE_REPLY", "SEND_MESSAGE", "QUICK_REPLY"] },
+  { label: "Dados", types: ["ADD_TAG", "REMOVE_TAG", "SET_CUSTOM_FIELD"] },
 ];
 
 function defaultStepFor(type: FlowStepType): FlowStep {
@@ -89,8 +89,8 @@ function StepFields({ step, onChange }: { step: FlowStep; onChange: (next: FlowS
                   onChange({ ...step, keywords });
                 }}
               />
+              <div className="w-36 shrink-0">
               <Select
-                className="w-28"
                 value={kw.matchType}
                 onChange={(e) => {
                   const keywords = [...step.keywords];
@@ -101,11 +101,12 @@ function StepFields({ step, onChange }: { step: FlowStep; onChange: (next: FlowS
                 <option value="CONTAINS">Contém</option>
                 <option value="EXACT">Exato</option>
               </Select>
+              </div>
               <RemoveFieldButton onClick={() => onChange({ ...step, keywords: step.keywords.filter((_, j) => j !== i) })} />
             </div>
           ))}
           <AddFieldButton
-            label="keyword"
+            label="palavra-chave"
             onClick={() => onChange({ ...step, keywords: [...step.keywords, { value: "", matchType: "CONTAINS" }] })}
           />
         </div>
@@ -148,7 +149,7 @@ function StepFields({ step, onChange }: { step: FlowStep; onChange: (next: FlowS
               <Input
                 value={opt.title}
                 maxLength={20}
-                placeholder="Botão, ex: Me manda o vídeo (máx. 20 chars)"
+                placeholder="Botão, ex: Me manda o vídeo (até 20 caracteres)"
                 onChange={(e) => {
                   const next = [...options];
                   next[i] = { ...opt, title: e.target.value };
@@ -185,12 +186,11 @@ function StepFields({ step, onChange }: { step: FlowStep; onChange: (next: FlowS
             onChange={(e) => onChange({ ...step, text: e.target.value })}
           />
           {step.button ? (
-            <div className="flex gap-2">
+            <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto] items-center gap-2">
               <Input
-                className="w-56"
                 value={step.button.title}
                 maxLength={20}
-                placeholder="Texto do botão (máx. 20 chars)"
+                placeholder="Texto do botão (até 20 caracteres)"
                 onChange={(e) => onChange({ ...step, button: { ...step.button!, title: e.target.value } })}
               />
               <Input
@@ -220,7 +220,7 @@ function StepFields({ step, onChange }: { step: FlowStep; onChange: (next: FlowS
               <Input
                 value={opt.title}
                 maxLength={20}
-                placeholder="ex: Me manda o vídeo (máx. 20 chars)"
+                placeholder="ex: Me manda o vídeo (até 20 caracteres)"
                 onChange={(e) => {
                   const options = [...step.options];
                   options[i] = { ...opt, title: e.target.value };
@@ -247,7 +247,7 @@ function StepFields({ step, onChange }: { step: FlowStep; onChange: (next: FlowS
           <Input
             type="number"
             min={1}
-            className="w-20"
+            className="!w-24"
             value={step.minutes}
             onChange={(e) => onChange({ ...step, minutes: Number(e.target.value) || 1 })}
           />
@@ -261,7 +261,7 @@ function StepFields({ step, onChange }: { step: FlowStep; onChange: (next: FlowS
     case "ADD_TAG":
     case "REMOVE_TAG":
       return (
-        <Input value={step.tagName} placeholder="ex: lead_video_requested" onChange={(e) => onChange({ ...step, tagName: e.target.value })} />
+        <Input value={step.tagName} placeholder="ex: pediu_o_video" onChange={(e) => onChange({ ...step, tagName: e.target.value })} />
       );
 
     case "SET_CUSTOM_FIELD":
@@ -320,15 +320,15 @@ function ConditionFields({ rule, onChange }: { rule: ConditionRule; onChange: (r
         }}
       >
         <option value="conversation_automation_enabled">Automação ainda ativa na conversa</option>
-        <option value="user_replied">Usuário respondeu</option>
-        <option value="quick_reply_clicked">Quick reply clicado (opção específica)</option>
+        <option value="user_replied">A pessoa respondeu</option>
+        <option value="quick_reply_clicked">Clicou numa opção específica</option>
         <option value="tag_exists">Contato tem a tag</option>
-        <option value="custom_field">Custom field igual a</option>
-        <option value="variable">Variável do flow igual a</option>
+        <option value="custom_field">Campo igual a</option>
+        <option value="variable">Variável do fluxo igual a</option>
       </Select>
 
       {rule.type === "quick_reply_clicked" && (
-        <Input value={rule.optionKey} placeholder="key da opção (ex: yes)" onChange={(e) => onChange({ ...rule, optionKey: e.target.value })} />
+        <Input value={rule.optionKey} placeholder="chave da opção (ex: sim)" onChange={(e) => onChange({ ...rule, optionKey: e.target.value })} />
       )}
       {rule.type === "tag_exists" && (
         <Input value={rule.tagName} placeholder="nome da tag" onChange={(e) => onChange({ ...rule, tagName: e.target.value })} />
@@ -359,7 +359,7 @@ function AddStepControl({ onAdd }: { onAdd: (type: FlowStepType) => void }) {
       <DropdownMenu.Root>
         <DropdownMenu.Trigger asChild>
           <button
-            aria-label="Adicionar step"
+            aria-label="Adicionar passo"
             className="relative z-10 flex h-5 w-5 items-center justify-center rounded-full border border-border bg-surface-2 text-text-muted opacity-40 transition-opacity duration-[var(--motion-fast)] hover:border-signal hover:text-signal hover:opacity-100 focus-visible:opacity-100 group-hover:opacity-100 md:opacity-0"
           >
             <Plus className="h-3 w-3" />
@@ -369,12 +369,12 @@ function AddStepControl({ onAdd }: { onAdd: (type: FlowStepType) => void }) {
           <DropdownMenu.Content
             align="center"
             sideOffset={6}
-            className="w-48 rounded-[var(--radius-panel-lg)] border border-border bg-surface-elevated p-1 text-sm shadow-[var(--shadow-elevated)] data-[state=open]:animate-[panel-in_var(--motion-ui)_var(--ease-out)]"
+            className="w-60 rounded-[var(--radius-panel-lg)] border border-border bg-surface-elevated p-1 text-sm shadow-[var(--shadow-elevated)] data-[state=open]:animate-[panel-in_var(--motion-ui)_var(--ease-out)]"
           >
             {ADD_STEP_CATEGORIES.map((category, i) => (
               <div key={category.label}>
                 {i > 0 && <DropdownMenu.Separator className="my-1 h-px bg-border-subtle" />}
-                <DropdownMenu.Label className="px-2.5 py-1 text-xs uppercase tracking-wide text-text-muted">
+                <DropdownMenu.Label className="px-2.5 py-1 text-xs text-text-muted">
                   {category.label}
                 </DropdownMenu.Label>
                 {category.types.map((type) => (
@@ -461,7 +461,7 @@ export function FlowEditor({
     router.refresh();
   }
 
-  // Gate de revisão (B3, auditoria 24/09/2026): "Publicar versão" nunca mais
+  // Gate de revisão (B3, auditoria 24/09/2026): "Publicar" nunca mais
   // publica direto — primeiro salva o draft, depois abre o modal de revisão.
   // A publicação de fato só acontece em confirmPublish, depois do checkbox
   // marcado (ver publish-review-dialog.tsx).
@@ -513,7 +513,7 @@ export function FlowEditor({
   return (
     <div className="grid grid-cols-1 gap-0 border-t border-border-subtle md:grid-cols-[1fr_260px]">
       <div className="border-border-subtle px-6 py-6 md:border-r md:px-8">
-        <p className="mb-4 text-xs font-medium uppercase tracking-wide text-text-muted">Flow</p>
+        <h2 className="mb-5 text-lg font-semibold text-text">Fluxo</h2>
 
         {/* Trigger — fixo, único suportado no V1 */}
         <div className="flex gap-3">
@@ -521,8 +521,8 @@ export function FlowEditor({
             <SignalMarker type="trigger" className="text-text-secondary" />
           </div>
           <div className="flex-1 pb-1">
-            <p className="text-sm font-medium text-text">Instagram Comment</p>
-            <p className="text-xs text-text-muted">Trigger — único suportado nesta versão</p>
+            <p className="text-sm font-medium text-text">Comentário no Instagram</p>
+            <p className="text-xs text-text-muted">É o que inicia o fluxo</p>
           </div>
         </div>
 
@@ -561,7 +561,7 @@ export function FlowEditor({
                     <button
                       type="button"
                       onClick={() => removeStep(i)}
-                      aria-label="Remover step"
+                      aria-label="Remover passo"
                       className="rounded p-1 hover:bg-danger-soft hover:text-danger"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -579,7 +579,7 @@ export function FlowEditor({
 
         <div className="flex gap-3">
           <SignalMarker type="end" className="text-text-secondary" />
-          <p className="pt-0.5 text-sm text-text-muted">END — todo caminho termina aqui</p>
+          <p className="pt-0.5 text-sm text-text-muted">Fim do fluxo</p>
         </div>
 
         <div className="mt-7 flex items-center gap-3 border-t border-border-subtle pt-5">
@@ -587,20 +587,20 @@ export function FlowEditor({
             {saving ? "Salvando…" : "Salvar rascunho"}
           </Button>
           <Button variant="primary" onClick={openReview} disabled={saving || publishing}>
-            {saving ? "Salvando…" : "Publicar versão"}
+            {saving ? "Salvando…" : "Publicar"}
           </Button>
           {error && <span className="text-sm text-danger">{error}</span>}
         </div>
         {!hasDraft && !error && (
-          <p className="mt-2 text-xs text-text-muted">Editar e salvar cria automaticamente uma nova versão draft.</p>
+          <p className="mt-2 text-xs text-text-muted">Salvar guarda um rascunho. O que está no ar só muda quando você publica.</p>
         )}
       </div>
 
       <div className="px-6 py-6 md:px-6">
-        <p className="mb-3 text-xs font-medium uppercase tracking-wide text-text-muted">Details</p>
+        <h2 className="mb-3 text-lg font-semibold text-text">Detalhes</h2>
         <dl className="flex flex-col gap-3 text-sm">
           <div>
-            <dt className="text-xs text-text-muted">Steps</dt>
+            <dt className="text-xs text-text-muted">Passos</dt>
             <dd className="text-text">{steps.length}</dd>
           </div>
           <div>
