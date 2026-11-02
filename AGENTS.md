@@ -10,9 +10,10 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 # PITCHAT — regras do projeto
 
-- Escopo desta fase: automação de Instagram (ManyChat interno), Inbox, Contacts, Multi-Instagram.
-  **CONGELADOS (código preservado, sem trabalho novo)**: Media Library, Google Drive, agendamento/
-  publicação/calendário/scheduler/TikTok Publisher — ver `docs/PITCHAT_ARCHITECTURE.md` §1 e §12.
+- Escopo desta fase: automação de Instagram (ManyChat interno), Inbox, Contacts, Multi-Instagram,
+  e publicação e agendamento de Reels e Stories no Instagram (decisão do dono do produto, 01/11/2026).
+  **CONGELADOS (código preservado, sem trabalho novo)**: Google Drive e TikTok Publisher — ver
+  `docs/PITCHAT_ARCHITECTURE.md` §1 e §12, que ainda descrevem o congelamento antigo da publicação.
 - Nunca hardcode nome de perfil (ex: "Papagaio") em código — é dado em `profiles.name`.
 - Nunca use filename como identidade de mídia — `media_assets` usa SHA-256 + fingerprint.
 - Toda tabela de domínio carrega `workspace_id`; toda rota server-side usa `service_role`

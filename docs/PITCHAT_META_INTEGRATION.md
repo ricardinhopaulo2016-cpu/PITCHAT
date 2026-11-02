@@ -49,7 +49,7 @@ O PITCHAT terá **Meta App próprio** — não reutilizar app de outro projeto (
    - `instagram_business_basic`
    - `instagram_business_manage_messages`
    - `instagram_business_manage_comments`
-   - (`instagram_business_content_publish` só seria necessária se reativarmos publicação no futuro — **não solicitar agora**, escopo congelado)
+   - `instagram_business_content_publish` (publicação de Reels e Stories; pedida no OAuth desde 02/11/2026. Contas conectadas antes precisam refazer o login para o token receber a permissão)
    Fontes: https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/ , https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login/business-login
 8. ⚠️ **CORREÇÃO (10/09/2026) — item anterior aqui estava ERRADO.** Eu tinha documentado que Standard Access + Development Mode bastavam pra testar webhook com a própria conta. **Isso é falso especificamente para webhooks.** Confirmado literalmente, duas vezes, na doc oficial de webhooks: *"Apps must be set to **Live** in the App Dashboard to receive webhook notifications."* — e a tabela de requisitos da mesma página, pra "Business Login for Instagram" (nosso produto), lista:
 
@@ -86,7 +86,7 @@ Alternativa existente (não escolhida): "Instagram API with Facebook Login" — 
 
 | Passo | Endpoint | Notas |
 |---|---|---|
-| 1. Autorização (browser) | `GET https://www.instagram.com/oauth/authorize?client_id=&redirect_uri=&response_type=code&scope=` | `client_id` = **Instagram App ID**; `redirect_uri` idêntica à cadastrada; `scope` = lista separada por vírgula das 3 permissions |
+| 1. Autorização (browser) | `GET https://www.instagram.com/oauth/authorize?client_id=&redirect_uri=&response_type=code&scope=` | `client_id` = **Instagram App ID**; `redirect_uri` idêntica à cadastrada; `scope` = lista separada por vírgula das 4 permissions |
 | 2. Troca code → short-lived token | `POST https://api.instagram.com/oauth/access_token` (`client_id`, `client_secret`, `grant_type=authorization_code`, `redirect_uri`, `code`) | `client_id`/`client_secret` = **Instagram App ID/Secret**; `code` da URL de callback vale **1h, uso único** |
 | 3. Exchange → long-lived token | `GET https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=&access_token=` | `client_secret` = **Instagram App Secret**; short-lived expira em **3600s (1h)**; long-lived expira em **5.184.000s (60 dias)** |
 | 4. Refresh do long-lived | `GET https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token&access_token=` | não leva client_secret; só funciona se o token tiver **≥24h de idade** e **ainda não estiver expirado**; renovado vale outros 60 dias |

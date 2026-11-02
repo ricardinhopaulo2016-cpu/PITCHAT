@@ -35,6 +35,7 @@ describe("buildAuthorizationUrl", () => {
       "instagram_business_basic",
       "instagram_business_manage_messages",
       "instagram_business_manage_comments",
+      "instagram_business_content_publish",
     ]);
     // nunca os scopes legados descontinuados em 27/01/2025
     expect(scopes.some((s) => !s.startsWith("instagram_business_"))).toBe(false);
