@@ -156,7 +156,7 @@ export default async function PublishingPage({ searchParams }: { searchParams: P
         }
       />
 
-      <div className="grid grid-cols-1 items-start gap-4 px-6 pb-14 md:px-11 xl:grid-cols-[minmax(0,1fr)_400px]">
+      <div className="grid grid-cols-1 items-start gap-4 px-6 pb-14 md:px-11 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="flex min-w-0 flex-col gap-7">
           <WeekGrid week={week} accounts={gridAccounts} posts={gridPosts} todayKey={today()} />
 
@@ -222,7 +222,7 @@ const CHIP = {
 
 /** Uma linha por perfil, uma coluna por dia: dia vazio aparece vazio, é assim que a cadência furada fica visível. */
 function WeekGrid({ week, accounts, posts, todayKey }: { week: WeekDay[]; accounts: { id: string; username: string | null }[]; posts: PostRow[]; todayKey: string }) {
-  const columns = "150px repeat(7, minmax(0, 1fr))";
+  const columns = "136px repeat(7, minmax(0, 1fr))";
   return (
     <section className="overflow-hidden rounded-[var(--radius-panel-lg)] border border-border-subtle bg-surface-1" aria-label="Grade da semana">
       <div className="overflow-x-auto">
@@ -274,10 +274,10 @@ function GridChip({ post }: { post: PostRow }) {
   const chip = CHIP[post.status as keyof typeof CHIP] ?? CHIP.scheduled;
   const body = (
     <>
-      <span className="block truncate text-xs font-semibold" style={{ color: chip.color }}>
+      <span className="block break-words text-xs font-semibold leading-tight" style={{ color: chip.color }}>
         {post.media_type === "REELS" ? "Reel" : "Story"} {formatClock(post.scheduled_at)}
       </span>
-      <span className="block truncate text-xs text-text-secondary">{chip.label}</span>
+      <span className="block break-words text-xs leading-tight text-text-secondary">{chip.label}</span>
     </>
   );
   const className = "block rounded-[9px] border px-2 py-1.5";
