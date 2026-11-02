@@ -23,6 +23,7 @@ type MediaAssetListRow = {
   height: number | null;
   mime_type: string | null;
   created_at: string;
+  storage_removed_at: string | null;
 };
 
 export default async function MediaLibraryPage() {
@@ -34,7 +35,7 @@ export default async function MediaLibraryPage() {
     ? await admin
         .from("media_assets")
         .select(
-          "id, original_filename, storage_key, status, file_size, duration_ms, width, height, mime_type, created_at"
+          "id, original_filename, storage_key, status, file_size, duration_ms, width, height, mime_type, created_at, storage_removed_at"
         )
         .eq("workspace_id", auth.workspace.id)
         .neq("status", "duplicate") // linhas 'duplicate' são só log interno, não aparecem na listagem
@@ -47,7 +48,7 @@ export default async function MediaLibraryPage() {
   // parte que ainda não construímos, não vou fingir que existe.
   const thumbnails = new Map<string, string>();
   if (admin && assets?.length) {
-    const imageAssets = assets.filter((a) => a.mime_type?.startsWith("image/"));
+    const imageAssets = assets.filter((a) => a.mime_type?.startsWith("image/") && !a.storage_removed_at);
     await Promise.all(
       imageAssets.map(async (a) => {
         const { data: signed } = await admin.storage
@@ -102,7 +103,7 @@ export default async function MediaLibraryPage() {
                       {asset.original_filename ?? "(sem nome)"}
                     </p>
                     <p className="text-xs text-text-muted">
-                      <StatusBadge status={asset.status} /> ·{" "}
+                      <StatusBadge status={asset.status} removed={asset.storage_removed_at !== null} /> ·{" "}
                       {formatDurationMs(asset.duration_ms)} ·{" "}
                       {formatResolution(asset.width, asset.height)} ·{" "}
                       {formatBytes(asset.file_size)} ·{" "}
@@ -158,7 +159,9 @@ function Thumbnail({ mimeType, url }: { mimeType: string | null; url?: string })
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({ status, removed }: { status: string; removed: boolean }) {
+  // Pronta, mas sem arquivo: foi apagado depois de publicar para não pesar o armazenamento.
+  if (status === "ready" && removed) return <span className="text-text-muted">Arquivo apagado após publicar</span>;
   const label = mediaStatusLabel(status);
   const tone =
     status === "failed"

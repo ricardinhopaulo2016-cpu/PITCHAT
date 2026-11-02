@@ -56,12 +56,18 @@ export async function POST(request: Request) {
 
   const { data: asset } = await admin
     .from("media_assets")
-    .select("id, status, mime_type, file_size, duration_ms, width, height, fps, codec")
+    .select("id, status, storage_removed_at, mime_type, file_size, duration_ms, width, height, fps, codec")
     .eq("id", mediaAssetId)
     .eq("workspace_id", auth.workspace.id)
-    .maybeSingle<PublishableAsset & { id: string; status: string }>();
+    .maybeSingle<PublishableAsset & { id: string; status: string; storage_removed_at: string | null }>();
   if (!asset || asset.status !== "ready") {
     return NextResponse.json({ error: "MEDIA_NOT_READY", problems: ["Essa mídia não está pronta."] }, { status: 422 });
+  }
+  if (asset.storage_removed_at) {
+    return NextResponse.json(
+      { error: "MEDIA_FILE_REMOVED", problems: ["O arquivo desse vídeo foi apagado depois de publicar. Envie o vídeo de novo para postar."] },
+      { status: 422 }
+    );
   }
 
   const problems = [...validateAssetForPublishing(asset, mediaType).errors];

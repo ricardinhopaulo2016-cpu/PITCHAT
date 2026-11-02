@@ -27,6 +27,7 @@ type MediaAssetDetail = {
   source_type: string;
   processing_error: { reason?: string } | null;
   created_at: string;
+  storage_removed_at: string | null;
 };
 
 type MediaUsageRow = {
@@ -53,7 +54,7 @@ export default async function MediaAssetDetailPage({
   const { data: asset } = await admin
     .from("media_assets")
     .select(
-      "id, original_filename, storage_key, status, sha256, file_size, mime_type, duration_ms, width, height, fps, codec, bitrate, has_audio, source_type, processing_error, created_at"
+      "id, original_filename, storage_key, status, sha256, file_size, mime_type, duration_ms, width, height, fps, codec, bitrate, has_audio, source_type, processing_error, created_at, storage_removed_at"
     )
     .eq("id", id)
     .eq("workspace_id", auth.workspace.id) // nunca confia só no id da URL
@@ -71,7 +72,7 @@ export default async function MediaAssetDetailPage({
       .eq("media_asset_id", asset.id)
       .order("used_at", { ascending: false })
       .returns<MediaUsageRow[]>(),
-    asset.status === "ready"
+    asset.status === "ready" && !asset.storage_removed_at
       ? admin.storage.from("media").createSignedUrl(asset.storage_key, PREVIEW_TTL_SECONDS)
       : Promise.resolve({ data: null }),
   ]);
@@ -114,6 +115,12 @@ export default async function MediaAssetDetailPage({
       {!previewUrl && asset.status === "failed" && (
         <div className="mb-6 rounded-[var(--radius-panel-lg)] border border-danger/30 bg-danger-soft p-4 text-sm text-danger">
           {friendlyUploadError(asset.processing_error?.reason)}
+        </div>
+      )}
+      {asset.storage_removed_at && (
+        <div className="mb-6 rounded-[var(--radius-panel-lg)] border border-border-subtle bg-surface-1 p-4 text-sm text-text-secondary">
+          O arquivo foi apagado do PITCHAT em {new Date(asset.storage_removed_at).toLocaleString("pt-BR")}, depois de publicar, para não pesar o armazenamento.
+          O post continua no Instagram. Para postar esse vídeo de novo, envie o arquivo outra vez.
         </div>
       )}
       {!previewUrl && (asset.status === "pending" || asset.status === "processing") && (

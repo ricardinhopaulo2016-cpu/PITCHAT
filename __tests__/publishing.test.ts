@@ -128,6 +128,42 @@ describe("advanceScheduledPost", () => {
     expect(merged(patches)).toMatchObject({ status: "published", permalink: null });
   });
 
+  it("depois de publicar avisa o gancho com o post (usado para liberar o arquivo da mídia)", async () => {
+    const { deps } = makeDeps(makePost({ status: "processing", container_id: "c-1" }));
+    deps.onPublished = vi.fn().mockResolvedValue(undefined);
+    await expect(advanceScheduledPost(deps, "post-1")).resolves.toBe("published");
+    expect(deps.onPublished).toHaveBeenCalledTimes(1);
+    expect(deps.onPublished).toHaveBeenCalledWith(expect.objectContaining({ id: "post-1", media_asset_id: "asset-1" }));
+  });
+
+  it("também avisa o gancho quando a resposta do media_publish se perdeu (container já PUBLISHED)", async () => {
+    const { deps } = makeDeps(makePost({ status: "processing", container_id: "c-1", publish_attempted_at: NOW.toISOString() }), {
+      getContainerStatus: vi.fn().mockResolvedValue({ statusCode: "PUBLISHED", detail: null }),
+    });
+    deps.onPublished = vi.fn().mockResolvedValue(undefined);
+    await expect(advanceScheduledPost(deps, "post-1")).resolves.toBe("published");
+    expect(deps.onPublished).toHaveBeenCalledTimes(1);
+  });
+
+  it("gancho que falha não muda o resultado: o post continua publicado e o passo não repete", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { deps, patches, pub } = makeDeps(makePost({ status: "processing", container_id: "c-1" }));
+    deps.onPublished = vi.fn().mockRejectedValue(new Error("storage fora"));
+    await expect(advanceScheduledPost(deps, "post-1")).resolves.toBe("published");
+    expect(merged(patches).status).toBe("published");
+    expect(pub.publishContainer).toHaveBeenCalledTimes(1);
+    errorSpy.mockRestore();
+  });
+
+  it("não avisa o gancho quando o post falha (o arquivo precisa ficar para o tentar de novo)", async () => {
+    const { deps } = makeDeps(makePost({ status: "processing", container_id: "c-1" }), {
+      getContainerStatus: vi.fn().mockResolvedValue({ statusCode: "ERROR", detail: "formato" }),
+    });
+    deps.onPublished = vi.fn().mockResolvedValue(undefined);
+    await expect(advanceScheduledPost(deps, "post-1")).resolves.toBe("failed");
+    expect(deps.onPublished).not.toHaveBeenCalled();
+  });
+
   it("nunca publica de novo: container já PUBLISHED só atualiza o status", async () => {
     const { deps, patches, pub } = makeDeps(makePost({ status: "processing", container_id: "c-1", publish_attempted_at: NOW.toISOString() }), {
       getContainerStatus: vi.fn().mockResolvedValue({ statusCode: "PUBLISHED", detail: null }),

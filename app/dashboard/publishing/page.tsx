@@ -74,6 +74,7 @@ export default async function PublishingPage({ searchParams }: { searchParams: P
       .select("id, original_filename, storage_key, mime_type, file_size, duration_ms, width, height, fps, codec")
       .eq("workspace_id", auth.workspace.id)
       .eq("status", "ready")
+      .is("storage_removed_at", null) // arquivo apagado depois de publicar: reenviar o vídeo traz de volta
       .order("created_at", { ascending: false })
       .limit(ASSET_LIMIT),
     admin

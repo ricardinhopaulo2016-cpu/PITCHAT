@@ -51,6 +51,8 @@ export type AdvanceDeps = {
   getAccount(socialAccountId: string): Promise<{ igUserId: string; accessToken: string } | null>;
   getMedia(mediaAssetId: string): Promise<{ url: string; kind: "video" | "image" } | null>;
   schedule(postId: string, delaySeconds: number, dedupeKey: string): Promise<void>;
+  /** Roda depois que o post virou "published". Falhar aqui nunca muda o resultado: o post já saiu. */
+  onPublished?(post: PostRecord): Promise<void>;
   publisher: InstagramPublisher;
   now(): Date;
 };
@@ -141,6 +143,7 @@ async function checkAndPublish(
   // A resposta anterior do media_publish se perdeu, mas o post saiu.
   if (statusCode === "PUBLISHED") {
     await deps.updatePost(post.id, { status: "published", published_at: deps.now().toISOString(), last_error: null });
+    await notifyPublished(deps, post);
     return "published";
   }
 
@@ -156,10 +159,22 @@ async function checkAndPublish(
       published_at: deps.now().toISOString(),
       last_error: null,
     });
+    await notifyPublished(deps, post);
     return "published";
   }
 
   return fail(deps, post, { reason: statusCode === "EXPIRED" ? "CONTAINER_EXPIRED" : "CONTAINER_ERROR", message: detail ?? undefined });
+}
+
+/** O post já saiu: nada que o gancho faça (ou deixe de fazer) pode virar erro nem repetição do passo. */
+async function notifyPublished(deps: AdvanceDeps, post: PostRecord): Promise<void> {
+  try {
+    await deps.onPublished?.(post);
+  } catch (err) {
+    console.error(
+      JSON.stringify({ event: "post_published_hook_failed", postId: post.id, message: err instanceof Error ? err.message : String(err) })
+    );
+  }
 }
 
 async function handleError(deps: AdvanceDeps, post: PostRecord, err: unknown): Promise<AdvanceOutcome> {

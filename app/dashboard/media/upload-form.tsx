@@ -71,7 +71,11 @@ export function MediaUploadForm({ onUploaded }: { onUploaded?: (mediaAssetId: st
       const finalizeBody = await finalizeRes.json().catch(() => ({}));
       if (!finalizeRes.ok) throw new Error(finalizeBody.error);
 
-      if (finalizeBody.status === "EXACT_DUPLICATE") {
+      if (finalizeBody.status === "EXACT_DUPLICATE" && finalizeBody.restored) {
+        // Vídeo já publicado antes, cujo arquivo tinha sido apagado: voltou a ficar pronto para postar.
+        setState({ phase: "ready" });
+        onUploaded?.(finalizeBody.existingAssetId);
+      } else if (finalizeBody.status === "EXACT_DUPLICATE") {
         setState({ phase: "duplicate", existingAssetId: finalizeBody.existingAssetId });
         onUploaded?.(finalizeBody.existingAssetId);
       } else {

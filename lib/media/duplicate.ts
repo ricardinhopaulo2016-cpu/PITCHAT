@@ -1,7 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type ExactDuplicateCheck =
-  | { isDuplicate: true; existingAssetId: string }
+  /** fileRemoved: o registro existe, mas o arquivo foi apagado do Storage depois de publicar. */
+  | { isDuplicate: true; existingAssetId: string; existingStorageKey: string; fileRemoved: boolean }
   | { isDuplicate: false };
 
 /**
@@ -17,7 +18,7 @@ export async function findExactDuplicate(
 ): Promise<ExactDuplicateCheck> {
   const { data, error } = await admin
     .from("media_assets")
-    .select("id")
+    .select("id, storage_key, storage_removed_at")
     .eq("workspace_id", workspaceId)
     .eq("sha256", sha256)
     .eq("status", "ready")
@@ -28,5 +29,12 @@ export async function findExactDuplicate(
     throw new Error(`Falha ao checar duplicata exata: ${error.message}`);
   }
 
-  return data ? { isDuplicate: true, existingAssetId: data.id } : { isDuplicate: false };
+  return data
+    ? {
+        isDuplicate: true,
+        existingAssetId: data.id,
+        existingStorageKey: data.storage_key,
+        fileRemoved: data.storage_removed_at !== null,
+      }
+    : { isDuplicate: false };
 }

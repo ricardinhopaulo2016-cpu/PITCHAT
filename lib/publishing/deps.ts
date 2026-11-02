@@ -3,6 +3,7 @@ import { decryptToken } from "@/lib/meta/token-crypto";
 import { realInstagramPublisher } from "@/lib/meta/publishing";
 import { schedulePostAdvance } from "@/lib/qstash";
 import type { AdvanceDeps, PostRecord } from "./engine";
+import { releaseMediaFile, type ReleaseMediaDeps } from "./release-media";
 import { mediaKindOf } from "./validate";
 
 /** A URL assinada só precisa durar até a Meta baixar o arquivo; 6h cobre fila e reprocessamento. */
@@ -11,8 +12,50 @@ const MEDIA_URL_TTL_SECONDS = 6 * 60 * 60;
 const POST_COLUMNS =
   "id, social_account_id, media_asset_id, media_type, caption, share_to_feed, scheduled_at, status, container_id, publish_attempted_at, attempts, status_checks";
 
+export function buildReleaseMediaDeps(admin: SupabaseClient): ReleaseMediaDeps {
+  return {
+    async countPostsNeedingFile(mediaAssetId) {
+      const { count, error } = await admin
+        .from("scheduled_posts")
+        .select("id", { count: "exact", head: true })
+        .eq("media_asset_id", mediaAssetId)
+        .in("status", ["scheduled", "processing", "failed"]);
+      // Sem certeza de que ninguém usa o arquivo, ele não pode ser apagado.
+      if (error || count === null) throw new Error(`Falha ao contar posts da mídia: ${error?.message ?? "sem contagem"}`);
+      return count;
+    },
+
+    async claimFileRemoval(mediaAssetId) {
+      const { data, error } = await admin
+        .from("media_assets")
+        .update({ storage_removed_at: new Date().toISOString() })
+        .eq("id", mediaAssetId)
+        .eq("status", "ready")
+        .is("storage_removed_at", null)
+        .select("storage_key");
+      if (error) throw new Error(`Falha ao marcar a mídia como removida: ${error.message}`);
+      return data?.[0]?.storage_key ?? null;
+    },
+
+    async removeFile(storageKey) {
+      const { error } = await admin.storage.from("media").remove([storageKey]);
+      if (error) throw new Error(`Falha ao apagar o arquivo: ${error.message}`);
+    },
+
+    async undoClaim(mediaAssetId) {
+      const { error } = await admin.from("media_assets").update({ storage_removed_at: null }).eq("id", mediaAssetId);
+      if (error) throw new Error(`Falha ao desfazer a marca de removida: ${error.message}`);
+    },
+  };
+}
+
 export function buildAdvanceDeps(admin: SupabaseClient): AdvanceDeps {
   return {
+    async onPublished(post) {
+      const outcome = await releaseMediaFile(buildReleaseMediaDeps(admin), post.media_asset_id);
+      console.info(JSON.stringify({ event: "media_file_release", postId: post.id, mediaAssetId: post.media_asset_id, outcome }));
+    },
+
     publisher: realInstagramPublisher,
     now: () => new Date(),
 
@@ -52,9 +95,10 @@ export function buildAdvanceDeps(admin: SupabaseClient): AdvanceDeps {
     },
 
     async getMedia(mediaAssetId) {
-      const { data } = await admin.from("media_assets").select("storage_key, mime_type").eq("id", mediaAssetId).maybeSingle();
+      const { data } = await admin.from("media_assets").select("storage_key, mime_type, storage_removed_at").eq("id", mediaAssetId).maybeSingle();
       const kind = mediaKindOf(data?.mime_type ?? null);
-      if (!data || !kind) return null;
+      // Arquivo já apagado depois de publicar: não há o que mandar para a Meta.
+      if (!data || !kind || data.storage_removed_at) return null;
       const { data: signed, error } = await admin.storage.from("media").createSignedUrl(data.storage_key, MEDIA_URL_TTL_SECONDS);
       if (error || !signed) throw new Error(`Falha ao assinar a URL da mídia: ${error?.message}`);
       return { url: signed.signedUrl, kind };

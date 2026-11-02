@@ -17,7 +17,7 @@ export async function getMediaStats(
 ): Promise<MediaStats> {
   const { data, error } = await admin
     .from("media_assets")
-    .select("status")
+    .select("status, storage_removed_at")
     .eq("workspace_id", workspaceId)
     .neq("status", "duplicate");
 
@@ -27,7 +27,10 @@ export async function getMediaStats(
 
   return data.reduce(
     (acc, row) => {
-      if (row.status === "ready") acc.ready++;
+      // Pronta de verdade = com arquivo. Mídia cujo arquivo foi apagado após publicar não conta.
+      if (row.status === "ready") {
+        if (row.storage_removed_at === null) acc.ready++;
+      }
       else if (row.status === "pending" || row.status === "processing") acc.processing++;
       else if (row.status === "failed") acc.failed++;
       return acc;

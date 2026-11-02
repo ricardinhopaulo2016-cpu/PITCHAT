@@ -115,6 +115,34 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "DUPLICATE_CHECK_FAILED" }, { status: 500 });
   }
 
+  if (duplicateCheck.isDuplicate && duplicateCheck.fileRemoved) {
+    // Mesmo vídeo que já foi publicado e teve o arquivo apagado. Em vez de criar
+    // outra mídia (e perder a trava de Reel repetido, que é por mídia), o arquivo
+    // recém-enviado ocupa o lugar do antigo e a mídia existente volta a ter arquivo.
+    const { error: moveError } = await admin.storage
+      .from("media")
+      .move(asset.storage_key, duplicateCheck.existingStorageKey);
+    if (moveError) {
+      await markFailed(admin, asset.id, "RESTORE_FAILED", moveError.message);
+      return NextResponse.json({ error: "RESTORE_FAILED" }, { status: 500 });
+    }
+    const { error: restoreError } = await admin
+      .from("media_assets")
+      .update({ storage_removed_at: null })
+      .eq("id", duplicateCheck.existingAssetId);
+    if (restoreError) {
+      await markFailed(admin, asset.id, "RESTORE_FAILED", restoreError.message);
+      return NextResponse.json({ error: "RESTORE_FAILED" }, { status: 500 });
+    }
+    await admin.from("media_assets").update({ status: "duplicate", sha256 }).eq("id", asset.id);
+
+    return NextResponse.json({
+      status: "EXACT_DUPLICATE",
+      existingAssetId: duplicateCheck.existingAssetId,
+      restored: true,
+    });
+  }
+
   if (duplicateCheck.isDuplicate) {
     // Mesmo conteúdo já existe (ready) neste workspace — não guarda uma
     // segunda cópia física. Remove o objeto recém-enviado do Storage e marca
