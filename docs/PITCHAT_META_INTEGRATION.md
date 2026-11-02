@@ -18,6 +18,17 @@ Os fluxos abaixo têm código e testes (com mocks). Cada um só conta como funci
 
 Atualizar esta tabela pra `E2E VERIFIED (dd/mm/aaaa)` só depois de uma chamada real bem-sucedida, com o `messageId`/status HTTP retornado pela Meta anexado ao relatório de fase.
 
+| Publicação de Reels e Stories (`lib/meta/publishing.ts`, `lib/publishing/engine.ts`) | Completo | `NOT E2E VERIFIED` — ainda sem post real publicado pela API |
+
+### Publicação (lido na doc oficial em 02/11/2026)
+
+Fontes: https://developers.facebook.com/docs/instagram-platform/content-publishing/ e https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/reference/ig-user/media/
+
+- Fluxo: `POST /{ig-id}/media` cria o container, `GET /{container}?fields=status_code` acompanha (`IN_PROGRESS`, `FINISHED`, `ERROR`, `EXPIRED`, `PUBLISHED`), `POST /{ig-id}/media_publish` publica. Container expira em 24h.
+- A mídia precisa estar em URL pública. `upload_type=resumable` só existe com Facebook Login, não com Instagram Login.
+- Reels: MP4 ou MOV, 3 s a 15 min, até 300 MB, H.264 ou HEVC, 23 a 60 FPS, largura até 1920. Stories: vídeo de 3 a 60 s até 100 MB, ou imagem JPEG até 8 MB; sem legenda, link ou figurinha pela API.
+- Limites: 400 containers em 24h. Limite de posts: a doc diz 100 e 50 em lugares diferentes; a fonte real é `GET /{ig-id}/content_publishing_limit`.
+
 ## 1. Checklist manual — criar o Meta App (você precisa fazer isso; eu não consigo)
 
 ⚠️ **Aviso de precisão**: os nomes de produto/permission abaixo vêm de texto literal de páginas oficiais (URL citada em cada item). Os **nomes exatos de botão/menu dentro do App Dashboard** (que é uma SPA renderizada em JS) não puderam ser extraídos por fetch automatizado em alguns pontos — nesses casos, sigo o assistente/wizard que a própria Meta mostra dentro do produto (ele se adapta à versão atual da UI e é mais confiável que qualquer captura estática, inclusive a minha). Marquei `[wizard]` nesses passos.

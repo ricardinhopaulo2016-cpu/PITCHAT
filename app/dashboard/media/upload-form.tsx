@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { formatBytes } from "@/lib/media/format";
 import { friendlyUploadError } from "@/lib/media/error-messages";
+import { Button } from "@/components/ui/button";
 
 type UploadState =
   | { phase: "idle" }
@@ -16,7 +17,10 @@ type UploadState =
   | { phase: "duplicate"; existingAssetId: string }
   | { phase: "failed"; message: string; file: File };
 
-export function MediaUploadForm() {
+const panel = "flex flex-col gap-3 rounded-[var(--radius-panel-sm)] border border-border-subtle bg-surface-1 p-4";
+
+/** `onUploaded` recebe o id da mídia pronta, nova ou já existente na biblioteca. */
+export function MediaUploadForm({ onUploaded }: { onUploaded?: (mediaAssetId: string) => void } = {}) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [state, setState] = useState<UploadState>({ phase: "idle" });
@@ -69,8 +73,10 @@ export function MediaUploadForm() {
 
       if (finalizeBody.status === "EXACT_DUPLICATE") {
         setState({ phase: "duplicate", existingAssetId: finalizeBody.existingAssetId });
+        onUploaded?.(finalizeBody.existingAssetId);
       } else {
         setState({ phase: "ready" });
+        onUploaded?.(mediaAssetId);
       }
       router.refresh();
     } catch (err) {
@@ -90,35 +96,29 @@ export function MediaUploadForm() {
       />
 
       {state.phase === "idle" && (
-        <button
-          onClick={handlePick}
-          className="rounded border px-4 py-2 text-sm font-medium hover:bg-gray-50"
-        >
+        <Button type="button" onClick={handlePick}>
           Adicionar mídia
-        </button>
+        </Button>
       )}
 
       {state.phase === "selected" && (
-        <div className="flex flex-col gap-2 rounded border p-4">
+        <div className={panel}>
           <FilePreview file={state.file} />
           <div className="flex gap-2">
-            <button
-              onClick={() => handleSend(state.file)}
-              className="rounded bg-black px-4 py-2 text-sm font-medium text-white"
-            >
+            <Button type="button" variant="primary" onClick={() => handleSend(state.file)}>
               Enviar mídia
-            </button>
-            <button onClick={reset} className="rounded border px-4 py-2 text-sm">
+            </Button>
+            <Button type="button" onClick={reset}>
               Cancelar
-            </button>
+            </Button>
           </div>
         </div>
       )}
 
       {(state.phase === "uploading" || state.phase === "processing") && (
-        <div className="flex flex-col gap-2 rounded border p-4">
+        <div className={panel}>
           <FilePreview file={state.file} />
-          <p className="flex items-center gap-2 text-sm opacity-70">
+          <p className="flex items-center gap-2 text-sm text-text-secondary">
             <Spinner />
             {state.phase === "uploading" ? "Enviando mídia…" : "Processando mídia…"}
           </p>
@@ -126,44 +126,38 @@ export function MediaUploadForm() {
       )}
 
       {state.phase === "ready" && (
-        <div className="flex items-center justify-between rounded border border-green-200 bg-green-50 p-4">
-          <p className="text-sm text-green-800">Mídia enviada e pronta.</p>
-          <button onClick={reset} className="text-sm underline">
+        <div className={`${panel} flex-row items-center justify-between`}>
+          <p className="text-sm text-success">Mídia enviada e pronta.</p>
+          <Button type="button" variant="tertiary" onClick={reset}>
             Enviar outra
-          </button>
+          </Button>
         </div>
       )}
 
       {state.phase === "duplicate" && (
-        <div className="flex items-center justify-between rounded border border-amber-200 bg-amber-50 p-4">
-          <p className="text-sm text-amber-800">Esse vídeo já está na sua biblioteca.</p>
-          <div className="flex gap-3">
-            <Link
-              href={`/dashboard/media/${state.existingAssetId}`}
-              className="text-sm underline"
-            >
+        <div className={`${panel} flex-row items-center justify-between`}>
+          <p className="text-sm text-warning">Esse arquivo já está na biblioteca.</p>
+          <div className="flex items-center gap-3">
+            <Link href={`/dashboard/media/${state.existingAssetId}`} className="text-sm text-text-secondary underline hover:text-text">
               Abrir mídia existente
             </Link>
-            <button onClick={reset} className="text-sm underline opacity-70">
+            <Button type="button" variant="tertiary" onClick={reset}>
               Fechar
-            </button>
+            </Button>
           </div>
         </div>
       )}
 
       {state.phase === "failed" && (
-        <div className="flex flex-col gap-2 rounded border border-red-200 bg-red-50 p-4">
-          <p className="text-sm text-red-800">{state.message}</p>
+        <div className={panel}>
+          <p className="text-sm text-danger">{state.message}</p>
           <div className="flex gap-2">
-            <button
-              onClick={() => handleSend(state.file)}
-              className="rounded border px-3 py-1.5 text-sm"
-            >
+            <Button type="button" onClick={() => handleSend(state.file)}>
               Tentar de novo
-            </button>
-            <button onClick={reset} className="text-sm underline opacity-70">
+            </Button>
+            <Button type="button" variant="tertiary" onClick={reset}>
               Escolher outro arquivo
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -174,8 +168,8 @@ export function MediaUploadForm() {
 function FilePreview({ file }: { file: File }) {
   return (
     <div className="text-sm">
-      <p className="font-medium break-all">{file.name}</p>
-      <p className="opacity-60">
+      <p className="break-all font-medium text-text">{file.name}</p>
+      <p className="text-text-muted">
         {formatBytes(file.size)} · {file.type || "tipo desconhecido"}
       </p>
     </div>

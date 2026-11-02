@@ -6,3 +6,4 @@ export { InboxSignalIcon } from "./inbox-signal-icon";
 export { ContactThreadIcon } from "./contact-thread-icon";
 export { SignalMarker, type SignalMarkerType } from "./signal-marker";
 export { PulseIcon } from "./pulse-icon";
+export { PublishIcon } from "./publish-icon";

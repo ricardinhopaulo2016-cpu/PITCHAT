@@ -97,6 +97,32 @@ export async function scheduleWebhookProcessing(params: {
   }
 }
 
+/** Agenda o próximo passo de um post (ver lib/publishing/engine.ts). */
+export async function schedulePostAdvance(params: {
+  postId: string;
+  delaySeconds: number;
+  deduplicationId: string;
+}): Promise<{ ok: true; messageId: string } | { ok: false; reason: string }> {
+  const client = getQstashClient();
+  const appUrl = getAppUrl();
+
+  if (!client) return { ok: false, reason: "QSTASH_NOT_CONFIGURED" };
+  if (!appUrl) return { ok: false, reason: "PITCHAT_APP_URL_NOT_CONFIGURED" };
+
+  try {
+    const res = await client.publishJSON({
+      url: `${appUrl}/api/jobs/advance-scheduled-post`,
+      body: { postId: params.postId },
+      ...(params.delaySeconds > 0 ? { delay: params.delaySeconds } : {}),
+      deduplicationId: sanitizeDeduplicationId(params.deduplicationId),
+      retries: 3,
+    });
+    return { ok: true, messageId: res.messageId };
+  } catch (err) {
+    return { ok: false, reason: err instanceof Error ? err.message : "UNKNOWN_ERROR" };
+  }
+}
+
 let cachedReceiver: Receiver | null | undefined;
 
 /** Verifica a assinatura `Upstash-Signature` de um callback do QStash. */
