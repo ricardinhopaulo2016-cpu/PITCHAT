@@ -25,7 +25,7 @@ export default async function AutomationEditorPage({ params }: { params: Promise
   // abaixo), mas buscar ela já em paralelo não muda o resultado — só evita
   // um 4º round-trip sequencial no caso comum de automação sem rascunho
   // pendente (reauditoria HEAD 24/09/2026).
-  const [{ data: profile }, accounts, draft, publishedVersion] = await Promise.all([
+  const [{ data: profile }, profileAccounts, draft, publishedVersion] = await Promise.all([
     admin.from("profiles").select("name").eq("id", automation.profile_id).maybeSingle(),
     // Lista — um perfil pode ter várias contas (Fase D0); nunca .maybeSingle().
     listProfileInstagramAccounts(admin, auth.workspace.id, automation.profile_id),
@@ -33,6 +33,10 @@ export default async function AutomationEditorPage({ params }: { params: Promise
     automation.current_version_id ? loadVersionById(admin, automation.current_version_id) : Promise.resolve(null),
   ]);
   const version = draft ?? publishedVersion;
+  // Automação de uma conta só mostra e revisa só aquela conta.
+  const accounts = automation.social_account_id
+    ? profileAccounts.filter((a) => a.id === automation.social_account_id)
+    : profileAccounts;
   const connected = accounts.filter((a) => a.status === "connected");
 
   const spec = version ? decompileGraphToFlow(version.graph) : { steps: [] };

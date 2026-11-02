@@ -16,6 +16,7 @@ type AutomationRow = {
   name: string;
   status: AutomationStatus;
   profile_id: string;
+  social_account_id: string | null;
   current_version_id: string | null;
   updated_at: string;
 };
@@ -33,7 +34,7 @@ export default async function AutomationsPage() {
     admin.from("profiles").select("id, name").eq("workspace_id", auth.workspace.id).returns<ProfileRow[]>(),
     admin
       .from("automations")
-      .select("id, name, status, profile_id, current_version_id, updated_at")
+      .select("id, name, status, profile_id, social_account_id, current_version_id, updated_at")
       .eq("workspace_id", auth.workspace.id)
       .order("updated_at", { ascending: false })
       .returns<AutomationRow[]>(),
@@ -60,8 +61,9 @@ export default async function AutomationsPage() {
   }
 
   const profileById = new Map((profiles ?? []).map((p) => [p.id, p.name]));
-  // A automação pertence ao PERFIL (não a uma conta): vale para todas as contas conectadas dele.
+  // Sem social_account_id, a automação vale para todas as contas conectadas do perfil.
   const connectedByProfile = groupAccountsByProfile(accounts.filter((a) => a.status === "connected"));
+  const accountById = new Map(accounts.map((a) => [a.id, a]));
 
   return (
     <>
@@ -75,7 +77,7 @@ export default async function AutomationsPage() {
           />
         ) : (
           <div className="mb-6">
-            <CreateAutomationForm profiles={profiles} />
+            <CreateAutomationForm profiles={profiles} accounts={accounts} />
           </div>
         )}
 
@@ -120,6 +122,10 @@ export default async function AutomationsPage() {
                         {profileById.get(automation.profile_id) ?? "—"}
                         <span className="block text-xs text-text-muted">
                           {(() => {
+                            if (automation.social_account_id) {
+                              const account = accountById.get(automation.social_account_id);
+                              return account?.username ? `@${account.username}` : "conta indisponível";
+                            }
                             const n = connectedByProfile.get(automation.profile_id)?.length ?? 0;
                             return n === 0 ? "nenhuma conta conectada" : n === 1 ? "1 conta conectada" : `${n} contas conectadas`;
                           })()}

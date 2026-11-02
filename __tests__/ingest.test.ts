@@ -133,6 +133,86 @@ describe("ingestInstagramComment — human takeover (achado real 24/09/2026)", (
   });
 });
 
+describe("ingestInstagramComment — escopo por conta, keyword e retry", () => {
+  const graph = {
+    nodes: [
+      { id: "t", type: "TRIGGER_COMMENT", data: {} },
+      { id: "k", type: "KEYWORD_MATCH", data: { keywords: [{ value: "eu quero", matchType: "CONTAINS" }] } },
+      { id: "e", type: "END", data: {} },
+    ],
+    edges: [
+      { from: "t", to: "k" },
+      { from: "k", to: "e" },
+    ],
+  };
+  const automation = (id: string, social_account_id: string | null) => ({
+    id,
+    profile_id: "profile1",
+    status: "active",
+    current_version_id: `v-${id}`,
+    social_account_id,
+    automation_versions: { graph },
+  });
+  const comment = (text: string): InstagramCommentReceived => ({ ...commentFrom("user-1"), text });
+
+  it("roda a automação da própria conta e a do profile, nunca a de outra conta", async () => {
+    const fake = createFakeSupabase();
+    fake.__tables.automations.push(automation("minha", "sa1"), automation("do-profile", null), automation("de-outra", "sa2"));
+
+    await ingestInstagramComment(fake as never, fakeMeta(), socialAccount, comment("eu quero"));
+
+    expect(fake.__tables.automation_runs.map((r) => r.automation_id).sort()).toEqual(["do-profile", "minha"]);
+  });
+
+  it("comentário fora da keyword não abre run", async () => {
+    const fake = createFakeSupabase();
+    fake.__tables.automations.push(automation("minha", "sa1"));
+
+    await ingestInstagramComment(fake as never, fakeMeta(), socialAccount, comment("adorei o vídeo"));
+
+    expect(fake.__tables.comments).toHaveLength(1);
+    expect(fake.__tables.automation_runs).toHaveLength(0);
+  });
+
+  it("retry com comentário recente dispara o que faltou e não repete o que já rodou", async () => {
+    const fake = createFakeSupabase();
+    fake.__tables.automations.push(automation("ja-rodou", "sa1"), automation("faltou", "sa1"));
+    fake.__tables.comments.push({
+      id: "c-existente",
+      social_account_id: "sa1",
+      external_comment_id: "c1",
+      created_at: new Date().toISOString(),
+    });
+    fake.__tables.automation_runs.push({
+      id: "r1",
+      automation_id: "ja-rodou",
+      trigger_source: "comment",
+      trigger_ref_id: "c1",
+    });
+
+    const result = await ingestInstagramComment(fake as never, fakeMeta(), socialAccount, comment("eu quero"));
+
+    expect(result).toEqual({ processed: true });
+    expect(fake.__tables.automation_runs.map((r) => r.automation_id).sort()).toEqual(["faltou", "ja-rodou"]);
+  });
+
+  it("comentário antigo reenviado não dispara automação ativada depois", async () => {
+    const fake = createFakeSupabase();
+    fake.__tables.automations.push(automation("nova", "sa1"));
+    fake.__tables.comments.push({
+      id: "c-velho",
+      social_account_id: "sa1",
+      external_comment_id: "c1",
+      created_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+    });
+
+    const result = await ingestInstagramComment(fake as never, fakeMeta(), socialAccount, comment("eu quero"));
+
+    expect(result).toEqual({ processed: false, reason: "DUPLICATE_COMMENT_IGNORED" });
+    expect(fake.__tables.automation_runs).toHaveLength(0);
+  });
+});
+
 describe("ingestInstagramMessage — DM avulsa (achado real 24/09/2026: antes era descartada)", () => {
   it("grava a mensagem real em `messages`, sem disparar nenhuma automação", async () => {
     const fake = createFakeSupabase();

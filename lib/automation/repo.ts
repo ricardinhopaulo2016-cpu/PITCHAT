@@ -27,11 +27,28 @@ export async function loadAutomationForWorkspace(
 ) {
   const { data } = await admin
     .from("automations")
-    .select("id, workspace_id, profile_id, name, description, status, current_version_id")
+    .select("id, workspace_id, profile_id, social_account_id, name, description, status, current_version_id")
     .eq("id", automationId)
     .eq("workspace_id", workspaceId)
     .maybeSingle();
   return data;
+}
+
+/** A conta é deste workspace e deste profile? Nunca confiar em id de conta vindo do client sem isso. */
+export async function accountBelongsToProfile(
+  admin: SupabaseClient,
+  workspaceId: string,
+  profileId: string,
+  socialAccountId: string
+): Promise<boolean> {
+  const { data } = await admin
+    .from("social_accounts")
+    .select("id")
+    .eq("id", socialAccountId)
+    .eq("workspace_id", workspaceId)
+    .eq("profile_id", profileId)
+    .maybeSingle();
+  return !!data;
 }
 
 /** A versão em edição (status='draft') da automação, se existir. */

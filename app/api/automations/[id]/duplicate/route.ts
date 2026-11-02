@@ -1,14 +1,18 @@
 import { NextResponse } from "next/server";
 import { getAuthContext } from "@/lib/auth/session";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
-import { loadAutomationForWorkspace } from "@/lib/automation/repo";
+import { accountBelongsToProfile, loadAutomationForWorkspace } from "@/lib/automation/repo";
 import type { Graph } from "@/lib/automation/graph";
 import { invalidGraphBody, validateGraph } from "@/lib/automation/validate-graph";
 
 export const runtime = "nodejs";
 
-/** Duplica a automação: clona nome ("Cópia de X") e o grafo mais recente (publicado ou draft) como draft v1 de uma automação nova. */
-export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+/**
+ * Duplica a automação: clona nome ("Cópia de X") e o grafo mais recente
+ * (publicado ou draft) como draft v1 de uma automação nova. `socialAccountId`
+ * no body aponta a cópia para outra conta; sem ele, mantém a conta da origem.
+ */
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const auth = await getAuthContext();
   if (!auth) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
@@ -18,6 +22,12 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
 
   const source = await loadAutomationForWorkspace(admin, id, auth.workspace.id);
   if (!source) return NextResponse.json({ error: "AUTOMATION_NOT_FOUND" }, { status: 404 });
+
+  const body = await request.json().catch(() => null);
+  const targetAccountId = typeof body?.socialAccountId === "string" && body.socialAccountId ? body.socialAccountId : null;
+  if (targetAccountId && !(await accountBelongsToProfile(admin, auth.workspace.id, source.profile_id, targetAccountId))) {
+    return NextResponse.json({ error: "SOCIAL_ACCOUNT_NOT_FOUND" }, { status: 404 });
+  }
 
   const { data: lastVersion } = await admin
     .from("automation_versions")
@@ -37,6 +47,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     .insert({
       workspace_id: auth.workspace.id,
       profile_id: source.profile_id,
+      social_account_id: targetAccountId ?? source.social_account_id,
       name: `Cópia de ${source.name}`,
       description: source.description,
       status: "draft",

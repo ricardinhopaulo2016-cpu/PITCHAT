@@ -4,8 +4,11 @@ import { decryptToken } from "@/lib/meta/token-crypto";
 import type { InstagramCommentReceived, InstagramMessageReceived, InstagramQuickReplyReceived } from "@/lib/meta/events";
 import { advanceRun, claimWaitingRun, parseQuickReplyPayload, type SocialAccountForEngine } from "./engine";
 import { recordInboundMessage } from "./messages";
-import { resumeTargetId, type Graph } from "./graph";
-import type { ExecutionContext } from "./node-handlers";
+import { nextNode, resumeTargetId, type Graph } from "./graph";
+import { evaluateNode, type ExecutionContext } from "./node-handlers";
+
+/** Até quanto tempo depois do insert um comentário já gravado ainda pode ser retomado por retry. */
+const RETRY_RECOVERY_WINDOW_MS = 60 * 60 * 1000;
 
 type SocialAccountRow = {
   id: string;
@@ -62,8 +65,25 @@ export async function ingestInstagramComment(
     .select("id")
     .maybeSingle();
 
-  if (commentError) return { processed: false, reason: `DB_ERROR: ${commentError.message}` };
-  if (!insertedComment) return { processed: false, reason: "DUPLICATE_COMMENT_IGNORED" };
+  // Lança em vez de devolver motivo: a rota do QStash ignora o retorno e
+  // marcaria o evento como processado, sem retentar.
+  if (commentError) throw new Error(`Falha ao gravar comentário: ${commentError.message}`);
+
+  // Comentário já gravado pode ser reenvio da Meta ou retry de um worker que
+  // caiu depois do insert e antes de disparar. Dentro da janela, segue: a
+  // unique de automation_runs garante que automação já disparada não repete.
+  // Fora dela, ignora, para automação ativada depois não pegar comentário antigo.
+  if (!insertedComment) {
+    const { data: existing } = await admin
+      .from("comments")
+      .select("created_at")
+      .eq("social_account_id", socialAccount.id)
+      .eq("external_comment_id", event.externalCommentId)
+      .maybeSingle();
+    const createdAt = (existing as { created_at?: string } | null)?.created_at;
+    const withinRecovery = !!createdAt && Date.now() - new Date(createdAt).getTime() <= RETRY_RECOVERY_WINDOW_MS;
+    if (!withinRecovery) return { processed: false, reason: "DUPLICATE_COMMENT_IGNORED" };
+  }
 
   const conversation = await upsertConversation(admin, socialAccount.workspace_id, socialAccount.id, contact.id);
 
@@ -83,7 +103,7 @@ export async function ingestInstagramComment(
     return { processed: false, reason: "AUTOMATION_DISABLED_HUMAN_TAKEOVER" };
   }
 
-  const automations = await loadActiveAutomations(admin, socialAccount.profile_id);
+  const automations = await loadActiveAutomations(admin, socialAccount.profile_id, socialAccount.id);
   const socialAccountForEngine: SocialAccountForEngine = {
     id: socialAccount.id,
     externalAccountId: socialAccount.external_account_id,
@@ -91,6 +111,18 @@ export async function ingestInstagramComment(
   };
 
   for (const automation of automations) {
+    const ctx: ExecutionContext = {
+      variables: {},
+      triggerText: event.text,
+      contactTags: [],
+      customFields: {},
+      conversationAutomationEnabled: conversation.automation_enabled,
+    };
+
+    // Comentário fora da keyword não vira run: assim "runs" conta disparo de
+    // verdade, e não todo comentário do perfil.
+    if (!entryKeywordMatches(automation.graph, ctx)) continue;
+
     const run = await createRun(admin, {
       workspaceId: socialAccount.workspace_id,
       automationId: automation.automationId,
@@ -100,14 +132,7 @@ export async function ingestInstagramComment(
       triggerSource: "comment",
       triggerRefId: event.externalCommentId,
     });
-
-    const ctx: ExecutionContext = {
-      variables: {},
-      triggerText: event.text,
-      contactTags: [],
-      customFields: {},
-      conversationAutomationEnabled: conversation.automation_enabled,
-    };
+    if (!run) continue; // outro worker ou tentativa anterior já disparou esta automação
 
     await advanceRun(admin, meta, {
       run,
@@ -338,19 +363,31 @@ async function upsertConversation(
   return created!;
 }
 
-async function loadActiveAutomations(admin: SupabaseClient, profileId: string) {
+/** Automações ativas que valem para ESTA conta: as dela e as sem conta definida (valem para o profile todo). */
+async function loadActiveAutomations(admin: SupabaseClient, profileId: string, socialAccountId: string) {
   const { data } = await admin
     .from("automations")
-    .select("id, current_version_id, automation_versions!automations_current_version_fk(graph)")
+    .select("id, social_account_id, current_version_id, automation_versions!automations_current_version_fk(graph)")
     .eq("profile_id", profileId)
     .eq("status", "active")
     .not("current_version_id", "is", null);
 
-  return (data ?? []).map((row: Record<string, unknown>) => ({
-    automationId: row.id as string,
-    automationVersionId: row.current_version_id as string,
-    graph: (row.automation_versions as { graph: Graph }).graph,
-  }));
+  return (data ?? [])
+    .filter((row: Record<string, unknown>) => !row.social_account_id || row.social_account_id === socialAccountId)
+    .map((row: Record<string, unknown>) => ({
+      automationId: row.id as string,
+      automationVersionId: row.current_version_id as string,
+      graph: (row.automation_versions as { graph: Graph }).graph,
+    }));
+}
+
+/** Se o nó logo após o trigger é KEYWORD_MATCH, avalia antes de abrir a run. Outro formato de grafo segue para o engine. */
+function entryKeywordMatches(graph: Graph, ctx: ExecutionContext): boolean {
+  const trigger = graph.nodes.find((n) => n.type === "TRIGGER_COMMENT");
+  if (!trigger) return true;
+  const first = nextNode(graph, trigger.id);
+  if (first?.type !== "KEYWORD_MATCH") return true;
+  return evaluateNode(first, ctx).kind !== "no_match";
 }
 
 async function createRun(
@@ -365,19 +402,23 @@ async function createRun(
     triggerRefId: string;
   }
 ) {
-  const { data } = await admin
+  const { data, error } = await admin
     .from("automation_runs")
-    .insert({
-      workspace_id: params.workspaceId,
-      automation_id: params.automationId,
-      automation_version_id: params.automationVersionId,
-      conversation_id: params.conversationId,
-      contact_id: params.contactId,
-      trigger_source: params.triggerSource,
-      trigger_ref_id: params.triggerRefId,
-      status: "running",
-    })
+    .upsert(
+      {
+        workspace_id: params.workspaceId,
+        automation_id: params.automationId,
+        automation_version_id: params.automationVersionId,
+        conversation_id: params.conversationId,
+        contact_id: params.contactId,
+        trigger_source: params.triggerSource,
+        trigger_ref_id: params.triggerRefId,
+        status: "running",
+      },
+      { onConflict: "automation_id,trigger_source,trigger_ref_id", ignoreDuplicates: true }
+    )
     .select()
-    .single();
-  return data!;
+    .maybeSingle();
+  if (error) throw new Error(`Falha ao criar run: ${error.message}`);
+  return data; // null = já existe run desta automação para este comentário
 }

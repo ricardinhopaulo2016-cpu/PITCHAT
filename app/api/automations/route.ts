@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAuthContext } from "@/lib/auth/session";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { compileFlowToGraph, EMPTY_FLOW } from "@/lib/automation/flow-spec";
+import { accountBelongsToProfile } from "@/lib/automation/repo";
 
 export const runtime = "nodejs";
 
@@ -31,11 +32,17 @@ export async function POST(request: Request) {
     .maybeSingle();
   if (!profile) return NextResponse.json({ error: "PROFILE_NOT_FOUND" }, { status: 404 });
 
+  const socialAccountId = typeof body?.socialAccountId === "string" && body.socialAccountId ? body.socialAccountId : null;
+  if (socialAccountId && !(await accountBelongsToProfile(admin, auth.workspace.id, profileId, socialAccountId))) {
+    return NextResponse.json({ error: "SOCIAL_ACCOUNT_NOT_FOUND" }, { status: 404 });
+  }
+
   const { data: automation, error: automationError } = await admin
     .from("automations")
     .insert({
       workspace_id: auth.workspace.id,
       profile_id: profileId,
+      social_account_id: socialAccountId,
       name,
       description,
       status: "draft",

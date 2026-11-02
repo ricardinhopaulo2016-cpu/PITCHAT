@@ -6,10 +6,18 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 
-export function CreateAutomationForm({ profiles }: { profiles: { id: string; name: string }[] }) {
+export function CreateAutomationForm({
+  profiles,
+  accounts,
+}: {
+  profiles: { id: string; name: string }[];
+  accounts: { id: string; profile_id: string; username: string | null }[];
+}) {
   const router = useRouter();
   const [profileId, setProfileId] = useState(profiles[0]?.id ?? "");
+  const [socialAccountId, setSocialAccountId] = useState("");
   const [name, setName] = useState("");
+  const profileAccounts = accounts.filter((a) => a.profile_id === profileId);
   const [busy, setBusy] = useState<"create" | "seed" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -21,7 +29,7 @@ export function CreateAutomationForm({ profiles }: { profiles: { id: string; nam
     const res = await fetch("/api/automations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ profileId, name }),
+      body: JSON.stringify({ profileId, name, socialAccountId: socialAccountId || undefined }),
     });
     const json = await res.json();
     setBusy(null);
@@ -50,10 +58,28 @@ export function CreateAutomationForm({ profiles }: { profiles: { id: string; nam
     >
       <div className="flex flex-col gap-1.5">
         <label className="text-xs text-text-muted">Profile</label>
-        <Select value={profileId} onChange={(e) => setProfileId(e.target.value)} className="w-44">
+        <Select
+          value={profileId}
+          onChange={(e) => {
+            setProfileId(e.target.value);
+            setSocialAccountId(""); // a conta escolhida pertencia ao profile anterior
+          }}
+          className="w-44"
+        >
           {profiles.map((p) => (
             <option key={p.id} value={p.id}>
               {p.name}
+            </option>
+          ))}
+        </Select>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <label className="text-xs text-text-muted">Conta</label>
+        <Select value={socialAccountId} onChange={(e) => setSocialAccountId(e.target.value)} className="w-52">
+          <option value="">Todas as contas do perfil</option>
+          {profileAccounts.map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.username ? `@${a.username}` : "conta sem username"}
             </option>
           ))}
         </Select>
