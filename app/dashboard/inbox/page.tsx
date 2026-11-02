@@ -54,8 +54,8 @@ export default async function InboxPage({
     if (!channel) {
       return (
         <>
-          <PageHeader title="Inbox" description="Conversas reais com contatos do Instagram." />
-          <div className="px-6 pb-10 md:px-8">
+          <PageHeader title="Caixa de entrada" description="Conversas com quem comentou ou mandou mensagem." />
+          <div className="px-6 pb-10 md:px-11">
             <EmptyState
               title="Canal não encontrado ou não está mais conectado."
               description="A conta selecionada não existe mais neste workspace, ou foi desconectada. Nenhum dado foi ampliado pra outro canal automaticamente."
@@ -122,7 +122,7 @@ export default async function InboxPage({
 
   return (
     <>
-      <PageHeader title="Inbox" description="Conversas reais com contatos do Instagram." />
+      <PageHeader title="Caixa de entrada" description="Conversas com quem comentou ou mandou mensagem." />
 
       <div className="grid h-[calc(100dvh-14rem)] min-h-[28rem] grid-cols-1 overflow-hidden border-t border-border-subtle md:grid-cols-[300px_minmax(0,1fr)] lg:grid-cols-[300px_minmax(0,1fr)_300px] 2xl:grid-cols-[340px_minmax(0,1fr)_340px]">
         {/* Coluna 1 — lista de conversas */}

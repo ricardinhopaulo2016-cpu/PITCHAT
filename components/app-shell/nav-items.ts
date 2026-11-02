@@ -1,5 +1,5 @@
 import type { ComponentType, SVGProps } from "react";
-import { OverviewIcon, FlowIcon, ChannelIcon, InboxSignalIcon, ContactThreadIcon, PulseIcon, PublishIcon } from "@/components/icons/pitchat";
+import { Activity, AtSign, CalendarDays, Inbox, LayoutDashboard, Users, Workflow } from "lucide-react";
 
 export type NavItem = {
   href: string;
@@ -9,11 +9,11 @@ export type NavItem = {
 };
 
 export const NAV_ITEMS: NavItem[] = [
-  { href: "/dashboard", label: "Dashboard", icon: OverviewIcon },
-  { href: "/dashboard/automations", label: "Automations", icon: FlowIcon },
-  { href: "/dashboard/publishing", label: "Publicar", icon: PublishIcon },
-  { href: "/dashboard/social-accounts", label: "Social Accounts", icon: ChannelIcon },
-  { href: "/dashboard/health", label: "Health", icon: PulseIcon },
-  { href: "/dashboard/inbox", label: "Inbox", icon: InboxSignalIcon },
-  { href: "/dashboard/contacts", label: "Contacts", icon: ContactThreadIcon },
+  { href: "/dashboard", label: "Visão geral", icon: LayoutDashboard },
+  { href: "/dashboard/publishing", label: "Publicar", icon: CalendarDays },
+  { href: "/dashboard/automations", label: "Automações", icon: Workflow },
+  { href: "/dashboard/inbox", label: "Caixa de entrada", icon: Inbox },
+  { href: "/dashboard/contacts", label: "Contatos", icon: Users },
+  { href: "/dashboard/social-accounts", label: "Contas", icon: AtSign },
+  { href: "/dashboard/health", label: "Saúde", icon: Activity },
 ];

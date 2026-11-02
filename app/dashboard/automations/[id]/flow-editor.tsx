@@ -374,7 +374,7 @@ function AddStepControl({ onAdd }: { onAdd: (type: FlowStepType) => void }) {
             {ADD_STEP_CATEGORIES.map((category, i) => (
               <div key={category.label}>
                 {i > 0 && <DropdownMenu.Separator className="my-1 h-px bg-border-subtle" />}
-                <DropdownMenu.Label className="px-2.5 py-1 text-[11px] uppercase tracking-wide text-text-muted">
+                <DropdownMenu.Label className="px-2.5 py-1 text-xs uppercase tracking-wide text-text-muted">
                   {category.label}
                 </DropdownMenu.Label>
                 {category.types.map((type) => (
@@ -513,7 +513,7 @@ export function FlowEditor({
   return (
     <div className="grid grid-cols-1 gap-0 border-t border-border-subtle md:grid-cols-[1fr_260px]">
       <div className="border-border-subtle px-6 py-6 md:border-r md:px-8">
-        <p className="mb-4 text-[11px] font-medium uppercase tracking-wide text-text-muted">Flow</p>
+        <p className="mb-4 text-xs font-medium uppercase tracking-wide text-text-muted">Flow</p>
 
         {/* Trigger — fixo, único suportado no V1 */}
         <div className="flex gap-3">
@@ -597,7 +597,7 @@ export function FlowEditor({
       </div>
 
       <div className="px-6 py-6 md:px-6">
-        <p className="mb-3 text-[11px] font-medium uppercase tracking-wide text-text-muted">Details</p>
+        <p className="mb-3 text-xs font-medium uppercase tracking-wide text-text-muted">Details</p>
         <dl className="flex flex-col gap-3 text-sm">
           <div>
             <dt className="text-xs text-text-muted">Steps</dt>

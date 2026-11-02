@@ -93,7 +93,7 @@ export function ContactContext({
         ) : (
           <ul className="flex flex-wrap gap-1.5">
             {tags.map((t) => (
-              <li key={t} className="rounded-full border border-border-subtle bg-surface-1 px-2 py-0.5 text-[11px] text-text-secondary">
+              <li key={t} className="rounded-full border border-border-subtle bg-surface-1 px-2 py-0.5 text-xs text-text-secondary">
                 {t}
               </li>
             ))}
@@ -141,7 +141,7 @@ export function ContactContext({
                 );
               })}
             </ul>
-            {runs.length > RUNS_SHOWN && <p className="mt-2 text-[11px] text-text-muted">+ {runs.length - RUNS_SHOWN} execuções anteriores</p>}
+            {runs.length > RUNS_SHOWN && <p className="mt-2 text-xs text-text-muted">+ {runs.length - RUNS_SHOWN} execuções anteriores</p>}
           </details>
         )}
       </section>

@@ -64,7 +64,7 @@ function Stat({ label, value, color }: { label: string; value: number | string; 
       <span className="font-mono text-xl font-medium tabular-nums" style={{ color: color ?? "var(--text)" }}>
         {value}
       </span>
-      <span className="text-[11px] uppercase tracking-wide text-text-muted">{label}</span>
+      <span className="text-xs uppercase tracking-wide text-text-muted">{label}</span>
     </div>
   );
 }
@@ -110,8 +110,8 @@ export default async function HealthDashboardPage({
   if (channelId && !channel) {
     return (
       <>
-        <PageHeader title="Health" description="Estado operacional do PITCHAT — dados reais, nunca simulados." />
-        <div className="px-6 pb-10 md:px-8">
+        <PageHeader title="Saúde" description="Como o PITCHAT está funcionando agora, com dados reais." />
+        <div className="px-6 pb-10 md:px-11">
           <EmptyState
             title="Canal não encontrado ou não está mais conectado."
             description="A conta selecionada não existe mais neste workspace, ou foi desconectada. Nenhum dado foi ampliado pra outro canal automaticamente."
@@ -272,7 +272,7 @@ export default async function HealthDashboardPage({
         }
       />
 
-      <div className="flex flex-col gap-6 px-6 pb-10 md:px-8">
+      <div className="flex flex-col gap-6 px-6 pb-10 md:px-11">
         <SectionPanel title="Status geral">
           <ul className="divide-y divide-border-subtle">
             <StatusRow label="Webhook" status={webhookHealth.status} reason={webhookHealth.reason} />

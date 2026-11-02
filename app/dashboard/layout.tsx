@@ -3,7 +3,7 @@ import { getAuthContext } from "@/lib/auth/session";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { listWorkspaceChannelAccounts } from "@/lib/channel/repo";
 import { AppShell } from "@/components/app-shell/app-shell";
-import type { ChannelSwitcherAccount } from "@/components/app-shell/channel-switcher";
+import type { ChannelAccount } from "@/lib/channel/repo";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const auth = await getAuthContext();
@@ -12,7 +12,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // Dado real pro Channel Switcher (D1) — com profile já embutido pro
   // agrupamento visual, sem N+1.
   const admin = getSupabaseAdminClient();
-  const accounts: ChannelSwitcherAccount[] = admin ? await listWorkspaceChannelAccounts(admin, auth.workspace.id) : [];
+  const accounts: ChannelAccount[] = admin ? await listWorkspaceChannelAccounts(admin, auth.workspace.id) : [];
 
   return (
     <AppShell workspaceName={auth.workspace.name} email={auth.email ?? ""} accounts={accounts}>

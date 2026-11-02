@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Input, Textarea } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { AccountTile } from "@/components/ui/account-tile";
 import { formatBytes, formatDurationMs, formatResolution } from "@/lib/media/format";
 import { CAPTION_MAX_LENGTH, validateAssetForPublishing, type PublishMediaType } from "@/lib/publishing/validate";
 import { MediaUploadForm } from "../media/upload-form";
@@ -26,11 +27,11 @@ export type ComposerAsset = {
 
 export type ComposerAccount = { id: string; username: string | null; canPublish: boolean };
 
-const fieldLabel = "text-xs font-medium text-text-muted";
+const fieldLabel = "text-sm font-medium text-text";
 
 function segment(active: boolean) {
-  return `h-9 flex-1 rounded-[var(--radius-button)] border px-3 text-sm transition-colors duration-[var(--motion-fast)] ${
-    active ? "border-signal bg-surface-2 text-text" : "border-border text-text-secondary hover:text-text"
+  return `h-11 flex-1 rounded-[9px] px-3 text-sm transition-colors duration-[var(--motion-fast)] ${
+    active ? "bg-surface-elevated font-semibold text-white" : "font-medium text-text-secondary hover:text-text"
   }`;
 }
 
@@ -129,25 +130,33 @@ export function Composer({ assets, accounts }: { assets: ComposerAsset[]; accoun
   }
 
   return (
-    <div className="rounded-[var(--radius-panel-lg)] border border-border-subtle bg-surface-1 p-5">
-      <div className="grid gap-6 md:grid-cols-[240px_1fr]">
+    <div className="rounded-[var(--radius-panel-lg)] border border-border-subtle bg-surface-1 p-6">
+      <h2 className="mb-5 text-lg font-semibold text-text">Novo post</h2>
+      <div className="flex flex-col gap-5">
         {/* Mídia */}
-        <div className="flex flex-col gap-3">
-          <div className="aspect-[9/16] w-full overflow-hidden rounded-[var(--radius-panel-sm)] border border-border-subtle bg-surface-2">
+        <div className="flex gap-4">
+          <div className="aspect-[9/16] w-28 shrink-0 overflow-hidden rounded-[12px] bg-surface-3">
             {asset?.url && asset.mime_type?.startsWith("video/") ? (
               <video key={asset.id} src={asset.url} controls playsInline preload="metadata" className="h-full w-full object-contain" />
             ) : asset?.url ? (
               // eslint-disable-next-line @next/next/no-img-element -- signed URL expira, next/image cacheia por tempo demais pra isso
               <img src={asset.url} alt="" className="h-full w-full object-contain" />
             ) : (
-              <div className="flex h-full items-center justify-center px-4 text-center text-sm text-text-muted">Escolha ou envie um arquivo</div>
+              <div className="flex h-full items-center justify-center px-2 text-center text-xs text-text-muted">Escolha ou envie um arquivo</div>
             )}
           </div>
-          {asset && (
-            <p className="text-xs text-text-muted">
-              {formatDurationMs(asset.duration_ms)} · {formatResolution(asset.width, asset.height)} · {formatBytes(asset.file_size)}
-            </p>
-          )}
+          <div className="min-w-0 flex-1 text-sm">
+            {asset ? (
+              <>
+                <p className="truncate font-semibold text-text" title={asset.original_filename ?? undefined}>{asset.original_filename ?? "(sem nome)"}</p>
+                <p className="mt-2 text-text-secondary">{formatDurationMs(asset.duration_ms)}</p>
+                <p className="text-text-secondary">{formatResolution(asset.width, asset.height)}</p>
+                <p className="text-text-secondary">{formatBytes(asset.file_size)}</p>
+              </>
+            ) : (
+              <p className="text-text-muted">Nenhum arquivo escolhido.</p>
+            )}
+          </div>
         </div>
 
         <div className="flex min-w-0 flex-col gap-5">
@@ -168,7 +177,7 @@ export function Composer({ assets, accounts }: { assets: ComposerAsset[]; accoun
 
           <div className="flex flex-col gap-1.5">
             <span className={fieldLabel}>Formato</span>
-            <div className="flex max-w-xs gap-2">
+            <div className="flex gap-1.5 rounded-[12px] bg-bg p-1">
               <button type="button" className={segment(isReel)} aria-pressed={isReel} onClick={() => setMediaType("REELS")}>Reel</button>
               <button type="button" className={segment(!isReel)} aria-pressed={!isReel} onClick={() => setMediaType("STORIES")}>Story</button>
             </div>
@@ -182,7 +191,7 @@ export function Composer({ assets, accounts }: { assets: ComposerAsset[]; accoun
           </div>
 
           <div className="flex flex-col gap-2">
-            <span className={fieldLabel}>Contas</span>
+            <span className={fieldLabel}>Perfis e legendas</span>
             {accounts.length === 0 && <p className="text-sm text-text-muted">Nenhuma conta conectada.</p>}
             <ul className="flex flex-col gap-2">
               {accounts.map((account) => {
@@ -195,10 +204,11 @@ export function Composer({ assets, accounts }: { assets: ComposerAsset[]; accoun
                         checked={checked}
                         disabled={!account.canPublish}
                         onChange={() => toggleAccount(account.id)}
-                        className="h-4 w-4 accent-[var(--signal)]"
+                        className="h-4 w-4 shrink-0 accent-[var(--signal)]"
                       />
-                      @{account.username ?? "sem username"}
-                      {!account.canPublish && <span className="text-xs text-warning">reconecte para publicar</span>}
+                      <AccountTile username={account.username} size="sm" />
+                      <span className="min-w-0 truncate">@{account.username ?? "sem username"}</span>
+                      {!account.canPublish && <span className="shrink-0 text-xs text-warning">reconecte para publicar</span>}
                     </label>
                     {checked && isReel && (
                       <div className="border-t border-border-subtle p-3">
@@ -228,20 +238,20 @@ export function Composer({ assets, accounts }: { assets: ComposerAsset[]; accoun
 
           <div className="flex flex-col gap-1.5">
             <span className={fieldLabel}>Quando</span>
-            <div className="flex max-w-xs gap-2">
+            <div className="flex gap-1.5 rounded-[12px] bg-bg p-1">
               <button type="button" className={segment(mode === "later")} aria-pressed={mode === "later"} onClick={() => setMode("later")}>Agendar</button>
               <button type="button" className={segment(mode === "now")} aria-pressed={mode === "now"} onClick={() => setMode("now")}>Agora</button>
             </div>
             {mode === "later" && (
-              <div className="mt-1 flex flex-wrap items-end gap-3">
+              <div className="mt-1 flex flex-col gap-3">
                 <div className="flex flex-col gap-1.5">
                   <label className={fieldLabel} htmlFor="publish-when">Data e hora</label>
-                  <Input id="publish-when" type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} className="w-56" />
+                  <Input id="publish-when" type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} className="w-full" />
                 </div>
                 {selected.length > 1 && (
                   <div className="flex flex-col gap-1.5">
                     <label className={fieldLabel} htmlFor="publish-interval">Intervalo entre contas</label>
-                    <Select id="publish-interval" value={String(intervalMinutes)} onChange={(e) => setIntervalMinutes(Number(e.target.value))} className="w-36">
+                    <Select id="publish-interval" value={String(intervalMinutes)} onChange={(e) => setIntervalMinutes(Number(e.target.value))}>
                       <option value="0">Mesmo horário</option>
                       <option value="15">15 minutos</option>
                       <option value="30">30 minutos</option>
@@ -255,8 +265,8 @@ export function Composer({ assets, accounts }: { assets: ComposerAsset[]; accoun
             {whenInvalid && <p className="text-sm text-danger">Escolha um horário no futuro.</p>}
           </div>
 
-          <div className="flex items-center gap-3 border-t border-border-subtle pt-4">
-            <Button type="button" variant="primary" disabled={!canReview} onClick={openReview}>
+          <div className="flex flex-col gap-3 border-t border-border-subtle pt-4">
+            <Button type="button" variant="primary" disabled={!canReview} onClick={openReview} className="w-full">
               Revisar {selected.length > 0 ? `${selected.length} post${selected.length > 1 ? "s" : ""}` : ""}
             </Button>
             {done && <p className="text-sm text-success">{done}</p>}

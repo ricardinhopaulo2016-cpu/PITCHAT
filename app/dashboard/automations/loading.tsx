@@ -2,7 +2,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export default function AutomationsLoading() {
   return (
-    <div className="px-6 pb-10 pt-7 md:px-8 md:pt-8">
+    <div className="px-6 pb-10 pt-7 md:px-11 md:pt-8">
       <Skeleton className="h-8 w-44" />
       <Skeleton className="mt-2 h-4 w-80" />
 

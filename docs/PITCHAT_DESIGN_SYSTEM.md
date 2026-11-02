@@ -2,6 +2,15 @@
 
 > Nome da direção: **SIGNAL DESK**. Documento vivo — atualizar junto com `components/` e `app/globals.css` sempre que um token mudar. Ver também `docs/PITCHAT_BRAND.md` (logo/identidade) e `docs/PITCHAT_ARCHITECTURE.md` (arquitetura/backend — nada aqui muda backend).
 
+> **Redesign de 02/11/2026, aprovado pelo dono do produto. Vale sobre as seções abaixo onde houver conflito:**
+> - Menu lateral de 248px com nome em cada item, em português, e as contas sempre à vista (`components/app-shell/sidebar.tsx`). Saem o Thin Rail e a TopBar. O filtro por conta segue na URL (`?channel=`).
+> - Fonte **Schibsted Grotesk**; IBM Plex Mono só para IDs e dados técnicos. Corpo de 15px e `text-xs`/`text-sm` um degrau acima.
+> - Paleta em `app/globals.css`: fundo `#0B0B0D`, superfícies `#15151A`, `#1C1C22`, `#26262D`, ação `#F5B93F`. Raios de 10px em controles e 16px em painéis.
+> - Ícones de navegação vêm do Lucide, traço 1,7. O logo continua próprio.
+> - Cada conta tem sigla e cor derivadas do username (`lib/ui/account-identity.ts`, `components/ui/account-tile.tsx`). Nunca hardcode de nome de perfil.
+> - Status é bolinha + texto. A Caixa de entrada usa balões, com quem comenta à esquerda e automação à direita.
+> - Visão geral abre na meta de 1.000 EU QUERO por post, contada em `post_comment_counts` (só comentários que o PITCHAT recebeu).
+
 ## 1. Auditoria da UI anterior (09-10/09/2026)
 
 Antes desta reforma, o PITCHAT usava o starter padrão do `create-next-app` sem nenhum token, sem `components/` compartilhado, tudo inline em cada `page.tsx`: `font-sans: system-ui`, preto/branco puro (`#ffffff`/`#0a0a0a`), Tailwind utilitário genérico (`rounded border p-4`, `text-sm opacity-60`), três `StatCard` idênticos no dashboard, listas em `<table>`/`<ul>` sem hierarquia visual proprietária, nenhum ícone, nenhum logo, favicon ausente. Não era "AI slop" decorado (não tinha gradient/glow/glass) — era ausência total de identidade, o problema oposto mas igualmente a resolver.

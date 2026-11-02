@@ -30,8 +30,8 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
   if (channelId && !channel) {
     return (
       <>
-        <PageHeader title="Contacts" description="Pessoas que já interagiram com uma conta Instagram conectada." />
-        <div className="px-6 pb-10 md:px-8">
+        <PageHeader title="Contatos" description="Pessoas que já interagiram com uma conta Instagram conectada." />
+        <div className="px-6 pb-10 md:px-11">
           <EmptyState
             title="Canal não encontrado ou não está mais conectado."
             description="A conta selecionada não existe mais neste workspace, ou foi desconectada. Nenhum dado foi ampliado pra outro canal automaticamente."
@@ -59,12 +59,12 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
   return (
     <>
       <PageHeader
-        title="Contacts"
+        title="Contatos"
         description={channel ? `Contatos com conversa em @${channel.username ?? "conta"}.` : "Pessoas que já interagiram com uma conta Instagram conectada."}
       />
 
       {rows.length === 0 ? (
-        <div className="px-6 pb-10 md:px-8">
+        <div className="px-6 pb-10 md:px-11">
           <EmptyState
             title="Nenhum contato ainda"
             description={

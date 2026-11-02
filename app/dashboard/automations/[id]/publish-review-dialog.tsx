@@ -20,7 +20,7 @@ function Section({ label, items }: { label: string; items: string[] }) {
   if (items.length === 0) return null;
   return (
     <div className="flex flex-col gap-1">
-      <p className="text-[11px] font-medium uppercase tracking-wide text-text-muted">{label}</p>
+      <p className="text-xs font-medium uppercase tracking-wide text-text-muted">{label}</p>
       <ul className="flex flex-col gap-1">
         {items.map((text, i) => (
           <li key={i} className="whitespace-pre-wrap rounded-[var(--radius-panel-sm)] border border-border-subtle bg-surface-1 px-2.5 py-1.5 text-sm text-text">
@@ -110,7 +110,7 @@ export function PublishReviewDialog({
       <DialogContent title="Publicar automação" description="Confira exatamente o que vai sair pro Instagram antes de confirmar.">
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1">
-            <p className="text-[11px] font-medium uppercase tracking-wide text-text-muted">{connected.length === 1 ? "Conta" : "Contas"}</p>
+            <p className="text-xs font-medium uppercase tracking-wide text-text-muted">{connected.length === 1 ? "Conta" : "Contas"}</p>
             {connected.length === 0 ? (
               <p className="text-sm text-text">Nenhuma conta conectada a este perfil</p>
             ) : (
@@ -129,7 +129,7 @@ export function PublishReviewDialog({
           </div>
 
           <div className="flex flex-col gap-1">
-            <p className="text-[11px] font-medium uppercase tracking-wide text-text-muted">Trigger</p>
+            <p className="text-xs font-medium uppercase tracking-wide text-text-muted">Trigger</p>
             <p className="text-sm text-text">Instagram Comment</p>
           </div>
 

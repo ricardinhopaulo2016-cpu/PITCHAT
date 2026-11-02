@@ -49,7 +49,7 @@ export function MessageComposer({
 
   return (
     <div className="flex flex-col gap-2 border-t border-border-subtle px-5 py-3">
-      <p className="text-[11px] text-text-muted">
+      <p className="text-xs text-text-muted">
         Respondendo como {socialAccountUsername ? `@${socialAccountUsername}` : "conta não identificada"}
       </p>
       <Textarea
@@ -71,7 +71,7 @@ export function MessageComposer({
             {error}
           </span>
         ) : (
-          <span className="text-[11px] text-text-muted">Enter envia · Shift+Enter quebra a linha</span>
+          <span className="text-xs text-text-muted">Enter envia · Shift+Enter quebra a linha</span>
         )}
         <Button type="button" variant="primary" disabled={sending || !text.trim()} onClick={send}>
           {sending ? "Enviando…" : "Enviar"}

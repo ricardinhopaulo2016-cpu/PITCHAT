@@ -1,16 +1,18 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { getAuthContext } from "@/lib/auth/session";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { PageHeader } from "@/components/app-shell/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
-import { SignalMarker } from "@/components/icons/pitchat";
+import { AccountTile } from "@/components/ui/account-tile";
 import { accountCanPublish } from "@/lib/publishing/validate";
 import { friendlyPublishError } from "@/lib/publishing/messages";
 import type { PublishError } from "@/lib/publishing/engine";
 import { AutoRefreshWhilePending } from "../media/auto-refresh";
 import { Composer, type ComposerAsset } from "./composer";
 import { PostActions } from "./post-actions";
-import { dayKey, formatClock, formatDayHeading, formatPostTime } from "./format";
+import { dayKey, formatClock, formatDayHeading, formatPostTime, isDayKey, shiftWeek, weekOf, type WeekDay } from "./format";
 
 const ASSET_LIMIT = 60;
 const POST_LIMIT = 200;
@@ -26,6 +28,7 @@ type PostRow = {
   status: string;
   permalink: string | null;
   last_error: PublishError | null;
+  social_account_id: string;
   account: { username: string | null } | null;
   asset: { original_filename: string | null } | null;
 };
@@ -34,7 +37,15 @@ function historyStart(): string {
   return new Date(Date.now() - HISTORY_DAYS * 24 * 60 * 60_000).toISOString();
 }
 
-export default async function PublishingPage() {
+function today(): string {
+  return dayKey(new Date().toISOString());
+}
+
+export default async function PublishingPage({ searchParams }: { searchParams: Promise<{ semana?: string; channel?: string }> }) {
+  const { semana, channel } = await searchParams;
+  const reference = isDayKey(semana) ? semana : today();
+  const week = weekOf(reference);
+
   const auth = await getAuthContext();
   if (!auth) redirect("/login");
 
@@ -43,7 +54,10 @@ export default async function PublishingPage() {
     return <p className="p-8 text-sm text-danger">O sistema ainda não está configurado.</p>;
   }
 
-  const since = historyStart();
+  // A grade pode estar numa semana antiga: busca desde o que vier primeiro.
+  const weekStart = `${week[0].key}T00:00:00-03:00`;
+  const history = historyStart();
+  const since = new Date(weekStart).toISOString() < history ? new Date(weekStart).toISOString() : history;
   const [{ data: accountRows }, { data: assetRows }, { data: postRows, error: postsError }] = await Promise.all([
     admin
       .from("social_accounts")
@@ -62,7 +76,7 @@ export default async function PublishingPage() {
     admin
       .from("scheduled_posts")
       .select(
-        "id, media_type, caption, scheduled_at, published_at, status, permalink, last_error, account:social_accounts(username), asset:media_assets(original_filename)"
+        "id, media_type, caption, scheduled_at, published_at, status, permalink, last_error, social_account_id, account:social_accounts(username), asset:media_assets(original_filename)"
       )
       .eq("workspace_id", auth.workspace.id)
       .gte("scheduled_at", since)
@@ -94,7 +108,10 @@ export default async function PublishingPage() {
 
   const accounts = (accountRows ?? []).map((a) => ({ id: a.id, username: a.username, canPublish: accountCanPublish(a) }));
 
-  const posts = postRows ?? [];
+  const posts = (postRows ?? []).filter((p) => !channel || p.social_account_id === channel);
+  const gridAccounts = channel ? accounts.filter((a) => a.id === channel) : accounts;
+  const channelQuery = channel ? `&channel=${encodeURIComponent(channel)}` : "";
+  const isThisWeek = week.some((d) => d.key === today());
   const upcoming = posts.filter((p) => p.status === "scheduled" || p.status === "processing");
   const failed = posts.filter((p) => p.status === "failed").reverse();
   const published = posts.filter((p) => p.status === "published").reverse();
@@ -103,12 +120,34 @@ export default async function PublishingPage() {
     <>
       <AutoRefreshWhilePending active={posts.some((p) => p.status === "processing")} />
 
-      <PageHeader title="Publicar" description="Reels e Stories no Instagram. Horários em Brasília." />
+      <PageHeader
+        title="Publicar"
+        description="A semana inteira dos perfis numa grade. Horários em Brasília."
+        action={
+          <div className="flex items-center gap-2">
+            {!isThisWeek && (
+              <Link href={channel ? `/dashboard/publishing?channel=${encodeURIComponent(channel)}` : "/dashboard/publishing"} className="mr-1 text-sm text-text-secondary hover:text-text">
+                Hoje
+              </Link>
+            )}
+            <WeekLink href={`/dashboard/publishing?semana=${shiftWeek(reference, -1)}${channelQuery}`} label="Semana anterior">
+              <ChevronLeft className="h-[18px] w-[18px]" />
+            </WeekLink>
+            <span className="px-2 font-medium text-text">
+              {week[0].key.slice(8)}/{week[0].key.slice(5, 7)} a {week[6].key.slice(8)}/{week[6].key.slice(5, 7)}
+            </span>
+            <WeekLink href={`/dashboard/publishing?semana=${shiftWeek(reference, 1)}${channelQuery}`} label="Próxima semana">
+              <ChevronRight className="h-[18px] w-[18px]" />
+            </WeekLink>
+          </div>
+        }
+      />
 
-      <div className="mx-auto flex max-w-4xl flex-col gap-8 px-6 pb-10 md:px-8">
-        <Composer assets={assets} accounts={accounts} />
+      <div className="grid grid-cols-1 items-start gap-4 px-6 pb-14 md:px-11 xl:grid-cols-[minmax(0,1fr)_400px]">
+        <div className="flex min-w-0 flex-col gap-7">
+          <WeekGrid week={week} accounts={gridAccounts} posts={posts} todayKey={today()} />
 
-        {postsError && <p className="text-sm text-danger">Não foi possível carregar os posts agora.</p>}
+          {postsError && <p className="text-sm text-danger">Não foi possível carregar os posts agora.</p>}
 
         {failed.length > 0 && (
           <Section title="Com erro" count={failed.length}>
@@ -123,7 +162,7 @@ export default async function PublishingPage() {
             <div className="flex flex-col gap-5">
               {groupByDay(upcoming).map((group) => (
                 <div key={group.key} className="flex flex-col gap-2">
-                  <h3 className="text-xs font-medium capitalize text-text-muted">{formatDayHeading(group.posts[0].scheduled_at)}</h3>
+                  <h3 className="text-sm font-medium capitalize text-text-secondary">{formatDayHeading(group.posts[0].scheduled_at)}</h3>
                   <PostList posts={group.posts} clockOnly />
                 </div>
               ))}
@@ -136,8 +175,103 @@ export default async function PublishingPage() {
             <PostList posts={published} />
           </Section>
         )}
+        </div>
+
+        <Composer assets={assets} accounts={accounts} />
       </div>
     </>
+  );
+}
+
+function WeekLink({ href, label, children }: { href: string; label: string; children: React.ReactNode }) {
+  return (
+    <Link
+      href={href}
+      aria-label={label}
+      className="grid h-11 w-11 place-items-center rounded-[var(--radius-button)] border border-border text-text transition-colors duration-[var(--motion-fast)] hover:border-border-strong"
+    >
+      {children}
+    </Link>
+  );
+}
+
+const CHIP = {
+  published: { label: "Publicado", color: "var(--success)", bg: "var(--success-soft)" },
+  failed: { label: "Com erro", color: "var(--danger)", bg: "var(--danger-soft)" },
+  processing: { label: "Publicando", color: "var(--signal)", bg: "var(--signal-soft)" },
+  scheduled: { label: "Agendado", color: "var(--signal)", bg: "var(--signal-soft)" },
+} as const;
+
+/** Uma linha por perfil, uma coluna por dia: dia vazio aparece vazio, é assim que a cadência furada fica visível. */
+function WeekGrid({ week, accounts, posts, todayKey }: { week: WeekDay[]; accounts: { id: string; username: string | null }[]; posts: PostRow[]; todayKey: string }) {
+  const columns = "112px repeat(7, minmax(0, 1fr))";
+  return (
+    <section className="overflow-hidden rounded-[var(--radius-panel-lg)] border border-border-subtle bg-surface-1" aria-label="Grade da semana">
+      <div className="overflow-x-auto">
+        <div className="min-w-[700px]">
+          <div className="grid border-b border-border-subtle" style={{ gridTemplateColumns: columns }}>
+            <span />
+            {week.map((d) => (
+              <div key={d.key} className="border-l border-border-subtle px-2 py-3">
+                <p className="text-xs text-text-muted">{d.weekday}</p>
+                <p className={`text-xl font-semibold ${d.key === todayKey ? "text-signal" : "text-text"}`}>{d.day}</p>
+              </div>
+            ))}
+          </div>
+          {accounts.length === 0 && <p className="px-5 py-6 text-sm text-text-muted">Nenhuma conta conectada.</p>}
+          {accounts.map((account) => (
+            <div key={account.id} className="grid min-h-[112px] border-b border-border-subtle last:border-b-0" style={{ gridTemplateColumns: columns }}>
+              <div className="flex min-w-0 flex-col gap-2 px-3 py-3">
+                <AccountTile username={account.username} />
+                <span className="truncate text-xs font-semibold text-text" title={account.username ? `@${account.username}` : undefined}>
+                  {account.username ?? "sem username"}
+                </span>
+              </div>
+              {week.map((d) => (
+                <div key={d.key} className="flex min-w-0 flex-col gap-1.5 border-l border-border-subtle p-1.5">
+                  {posts
+                    .filter((p) => p.social_account_id === account.id && dayKey(p.scheduled_at) === d.key)
+                    .map((post) => (
+                      <GridChip key={post.id} post={post} />
+                    ))}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-5 border-t border-border-subtle px-5 py-3 text-xs text-text-secondary">
+        {[CHIP.published, CHIP.scheduled, CHIP.failed].map((c) => (
+          <span key={c.label} className="flex items-center gap-2">
+            <span aria-hidden="true" className="h-2.5 w-2.5 rounded-[3px]" style={{ background: c.color }} />
+            {c.label}
+          </span>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function GridChip({ post }: { post: PostRow }) {
+  const chip = CHIP[post.status as keyof typeof CHIP] ?? CHIP.scheduled;
+  const body = (
+    <>
+      <span className="block truncate text-xs font-semibold" style={{ color: chip.color }}>
+        {post.media_type === "REELS" ? "Reel" : "Story"} {formatClock(post.scheduled_at)}
+      </span>
+      <span className="block truncate text-xs text-text-secondary">{chip.label}</span>
+    </>
+  );
+  const className = "block rounded-[9px] border px-2 py-1.5";
+  const style = { background: chip.bg, borderColor: chip.color };
+  return post.permalink ? (
+    <a href={post.permalink} target="_blank" rel="noreferrer" className={className} style={style}>
+      {body}
+    </a>
+  ) : (
+    <div className={className} style={style} title={post.caption ?? undefined}>
+      {body}
+    </div>
   );
 }
 
@@ -155,7 +289,7 @@ function groupByDay(posts: PostRow[]) {
 function Section({ title, count, children }: { title: string; count: number; children: React.ReactNode }) {
   return (
     <section className="flex flex-col gap-3">
-      <h2 className="text-sm font-semibold text-text">
+      <h2 className="text-lg font-semibold text-text">
         {title} <span className="font-normal text-text-muted">{count}</span>
       </h2>
       {children}
@@ -168,6 +302,7 @@ function PostList({ posts, clockOnly = false }: { posts: PostRow[]; clockOnly?: 
     <ul className="divide-y divide-border-subtle overflow-hidden rounded-[var(--radius-panel-lg)] border border-border-subtle bg-surface-1">
       {posts.map((post) => (
         <li key={post.id} className="flex items-center gap-4 px-4 py-3">
+          <AccountTile username={post.account?.username} />
           <span className="w-24 shrink-0 text-sm tabular-nums text-text">
             {clockOnly ? formatClock(post.scheduled_at) : formatPostTime(post.published_at ?? post.scheduled_at)}
           </span>
@@ -196,15 +331,15 @@ function PostList({ posts, clockOnly = false }: { posts: PostRow[]; clockOnly?: 
 function PostStatus({ status }: { status: string }) {
   const config =
     status === "published"
-      ? { label: "Publicado", color: "var(--success)", marker: "action" as const }
+      ? { label: "Publicado", color: "var(--success)" }
       : status === "processing"
-        ? { label: "Publicando", color: "var(--warning)", marker: "wait" as const }
+        ? { label: "Publicando", color: "var(--warning)" }
         : status === "failed"
-          ? { label: "Erro", color: "var(--danger)", marker: "error" as const }
-          : { label: "Agendado", color: "var(--text-muted)", marker: "trigger" as const };
+          ? { label: "Erro", color: "var(--danger)" }
+          : { label: "Agendado", color: "var(--signal)" };
   return (
     <span className="hidden shrink-0 items-center gap-1.5 text-sm sm:inline-flex" style={{ color: config.color }}>
-      <SignalMarker type={config.marker} width={10} height={10} style={{ color: config.color }} />
+      <span aria-hidden="true" className="h-[7px] w-[7px] rounded-full" style={{ background: config.color }} />
       {config.label}
     </span>
   );

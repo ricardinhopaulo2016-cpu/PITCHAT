@@ -12,7 +12,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSel
     <div className="relative">
       <select
         ref={ref}
-        className={`h-9 w-full appearance-none rounded-[var(--radius-input)] border border-border bg-surface-1 px-3 pr-8 text-sm text-text transition-colors duration-[var(--motion-fast)] focus-visible:border-signal focus-visible:outline-none ${className ?? ""}`}
+        className={`h-11 w-full appearance-none rounded-[var(--radius-input)] border border-border bg-surface-1 px-3 pr-8 text-sm text-text transition-colors duration-[var(--motion-fast)] focus-visible:border-signal focus-visible:outline-none ${className ?? ""}`}
         {...rest}
       >
         {children}

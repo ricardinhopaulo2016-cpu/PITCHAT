@@ -6,7 +6,7 @@ const fieldBase =
   "focus-visible:border-signal focus-visible:outline-none";
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
-  ({ className, ...rest }, ref) => <input ref={ref} className={`${fieldBase} h-9 ${className ?? ""}`} {...rest} />
+  ({ className, ...rest }, ref) => <input ref={ref} className={`${fieldBase} h-11 ${className ?? ""}`} {...rest} />
 );
 Input.displayName = "Input";
 

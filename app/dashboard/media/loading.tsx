@@ -3,12 +3,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 export default function MediaLoading() {
   return (
     <div>
-      <div className="px-6 pb-6 pt-7 md:px-8 md:pt-8">
+      <div className="px-6 pb-6 pt-7 md:px-11 md:pt-8">
         <Skeleton className="h-7 w-40" />
         <Skeleton className="mt-2 h-4 w-96" />
       </div>
 
-      <div className="mx-auto max-w-4xl px-6 pb-10 md:px-8">
+      <div className="mx-auto max-w-4xl px-6 pb-10 md:px-11">
         <Skeleton className="mb-5 h-4 w-24" />
         <Skeleton className="mb-8 h-10 w-40" />
 

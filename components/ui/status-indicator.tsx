@@ -17,7 +17,7 @@ export function StatusIndicator({ status }: { status: AutomationStatus }) {
   const config = CONFIG[status];
   return (
     <span className="inline-flex items-center gap-1.5 text-sm" style={{ color: config.color }}>
-      <SignalMarker type={config.marker} width={10} height={10} style={{ color: config.color }} />
+      <span aria-hidden="true" className="h-[7px] w-[7px] rounded-full" style={{ background: config.color }} />
       {config.label}
     </span>
   );

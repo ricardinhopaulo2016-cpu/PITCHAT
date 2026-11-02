@@ -1,44 +1,44 @@
 @import "tailwindcss";
 
 /**
- * PITCHAT — Signal Desk design tokens.
+ * PITCHAT: design tokens.
  * Ver docs/PITCHAT_DESIGN_SYSTEM.md — nunca hex solto em componente,
  * sempre um destes tokens (ou uma var(--color-*) do Tailwind theme abaixo).
  */
 :root {
   /* Superfícies */
-  --bg: #0e0f0d;
-  --bg-sidebar: #10110f;
-  --surface-1: #141512;
-  --surface-2: #191a17;
-  --surface-3: #1e201c;
-  --surface-elevated: #20221e;
+  --bg: #0b0b0d;
+  --bg-sidebar: #101013;
+  --surface-1: #15151a;
+  --surface-2: #1c1c22;
+  --surface-3: #26262d;
+  --surface-elevated: #2b2b33;
 
   /* Bordas */
-  --border-subtle: #262823;
-  --border: #32352e;
-  --border-strong: #484c42;
+  --border-subtle: #212127;
+  --border: #2f2f37;
+  --border-strong: #4a4a54;
 
   /* Texto */
-  --text: #eeece4;
-  --text-secondary: #b1b3aa;
-  --text-muted: #82867b; /* ajustado de #777b72 — original ficava em 4.24:1 (abaixo do AA 4.5:1) contra surface-1 */
+  --text: #f4f2ec;
+  --text-secondary: #c9c8c4;
+  --text-muted: #a0a0aa;
 
   /* Signal (marca/ação — nunca mais que 5% da tela) */
-  --signal: #f2b441;
-  --signal-bright: #ffc14d;
-  --signal-hover: #ffc35c;
-  --signal-pressed: #d99a2b;
-  --signal-soft: rgba(242, 180, 65, 0.11);
-  --signal-on: #14140f; /* texto sobre fundo signal — near-black, nunca branco puro */
+  --signal: #f5b93f;
+  --signal-bright: #ffc85c;
+  --signal-hover: #ffc85c;
+  --signal-pressed: #dda22e;
+  --signal-soft: rgba(245, 185, 63, 0.12);
+  --signal-on: #14120a; /* texto sobre fundo signal — near-black, nunca branco puro */
 
   /* Semânticas */
-  --success: #73b987;
-  --success-soft: rgba(115, 185, 135, 0.12);
-  --warning: #d9a957;
+  --success: #7fd1a0;
+  --success-soft: rgba(127, 209, 160, 0.13);
+  --warning: #e8b458;
   --warning-soft: rgba(217, 169, 87, 0.12);
-  --danger: #dd6b64;
-  --danger-soft: rgba(221, 107, 100, 0.12);
+  --danger: #f0877f;
+  --danger-soft: rgba(240, 135, 127, 0.13);
   --info: #8da8b7;
 
   /* Spacing scale — docs/PITCHAT_DESIGN_SYSTEM.md §7 */
@@ -52,11 +52,11 @@
   --space-8: 56px;
 
   /* Radius — geometria, não "tudo redondo" */
-  --radius-input: 5px;
-  --radius-button: 5px;
-  --radius-panel-sm: 6px;
-  --radius-panel-lg: 8px;
-  --radius-dialog: 8px;
+  --radius-input: 10px;
+  --radius-button: 10px;
+  --radius-panel-sm: 10px;
+  --radius-panel-lg: 16px;
+  --radius-dialog: 16px;
 
   /* Motion */
   --motion-fast: 90ms;
@@ -101,7 +101,11 @@
   --color-danger-soft: var(--danger-soft);
   --color-info: var(--info);
 
-  --font-sans: var(--font-ibm-plex-sans), system-ui, sans-serif;
+  --font-sans: var(--font-schibsted), system-ui, sans-serif;
+
+  /* Escala legível: o painel inteiro sobe um degrau sem mexer em cada tela. */
+  --text-xs: 0.8125rem;
+  --text-sm: 0.9375rem;
   --font-mono: var(--font-ibm-plex-mono), ui-monospace, monospace;
 }
 
@@ -117,8 +121,9 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-sans);
-  font-size: 14px;
-  line-height: 1.5;
+  font-size: 15px;
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
 }
 

@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import type { TimelineEntry } from "@/lib/inbox/repo";
-import { SignalMarker } from "@/components/icons/pitchat";
 import { PublicReplyAction } from "./public-reply-action";
 import { ScrollToEnd } from "./scroll-to-end";
 import { dayKey, formatClock, formatDayLabel } from "@/lib/ui/format";
@@ -19,81 +18,60 @@ function truncateMediaId(id: string): string {
 }
 
 /**
- * Timeline operacional: leitura vertical cronológica sobre uma spine de 1px,
- * sem bolhas esquerda/direita. Signal Markers (◆ ‖ ■ !) ficam reservados
- * pra eventos de engine; o evento do lead (comentário, clique, DM) usa ● de
- * trigger; mensagens de automação/humano são só tipografia sobre a spine.
+ * A conversa como ela aconteceu: quem comentou à esquerda, automação e você à
+ * direita, e os eventos do fluxo (palavra-chave, espera, fim) centrados entre
+ * as mensagens. Falha sempre traz o texto, nunca só a cor.
  */
 export function Timeline({ entries, username, lastKey }: { entries: TimelineEntry[]; username: string | null; lastKey: string }) {
   if (entries.length === 0) {
-    return <p className="px-5 py-4 text-sm text-text-muted">Nenhuma atividade ainda.</p>;
+    return <p className="px-8 py-6 text-sm text-text-muted">Nenhuma atividade ainda.</p>;
   }
 
   const leadName = username ? `@${username}` : "Contato";
   const rows: ReactNode[] = [];
   let previousDay: string | null = null;
 
-  entries.forEach((entry, index) => {
+  entries.forEach((entry) => {
     const day = dayKey(entry.at);
     if (day !== previousDay) {
       rows.push(
-        <li key={`day-${day}`} className="pb-3 pl-8 pt-1 text-[11px] text-text-muted">
+        <li key={`day-${day}`} className="py-1 text-center text-xs text-text-muted">
           {formatDayLabel(entry.at)}
         </li>
       );
       previousDay = day;
     }
-    rows.push(<TimelineRow key={entry.id} entry={entry} leadName={leadName} first={index === 0} last={index === entries.length - 1} />);
+    rows.push(<TimelineRow key={entry.id} entry={entry} leadName={leadName} />);
   });
 
   return (
-    <div className="px-5 py-4">
-      <ol aria-label="Linha do tempo da conversa">{rows}</ol>
+    <div className="px-6 py-6 md:px-8">
+      <ol aria-label="Conversa" className="flex flex-col gap-3.5">
+        {rows}
+      </ol>
       <ScrollToEnd trigger={lastKey} />
     </div>
   );
 }
 
-function TimelineRow({ entry, leadName, first, last }: { entry: TimelineEntry; leadName: string; first: boolean; last: boolean }) {
-  const isSignal = entry.channel === "engine" && !!entry.signal;
-  const isLead = entry.actor === "USER";
+function TimelineRow({ entry, leadName }: { entry: TimelineEntry; leadName: string }) {
   const time = formatClock(entry.at);
 
-  // Spine: 1px contínua, começa no marker do primeiro item e termina no marker do último.
-  const spine = `absolute left-[9.5px] w-px bg-border-subtle ${first ? "top-2.5" : "top-0"} ${last ? "h-2.5" : "bottom-0"}`;
-  const showSpine = !(first && last);
+  if (entry.channel === "engine" && entry.signal) {
+    const isError = entry.signal.marker === "error";
+    return (
+      <li className={`text-center text-xs ${isError ? "font-medium text-danger" : "text-text-muted"}`}>
+        {entry.signal.label}
+        {entry.signal.detail && `: ${entry.signal.detail}`} · {time}
+      </li>
+    );
+  }
 
+  const isLead = entry.actor === "USER";
   return (
-    <li className={`relative grid grid-cols-[20px_1fr] gap-x-3 ${last ? "" : "pb-5"}`}>
-      {showSpine && <span aria-hidden="true" className={spine} />}
-
-      <div className="relative z-10 flex justify-center pt-[3px]">
-        {isSignal && entry.signal && (
-          <span className="bg-bg" style={{ color: entry.signal.marker === "error" ? "var(--danger)" : "var(--text-secondary)" }}>
-            <SignalMarker type={entry.signal.marker} width={12} height={12} />
-          </span>
-        )}
-        {isLead && (
-          <span className="bg-bg text-text-secondary">
-            <SignalMarker type="trigger" width={12} height={12} />
-          </span>
-        )}
-      </div>
-
-      <div className="min-w-0">
-        {isSignal && entry.signal ? (
-          <div className="flex flex-wrap items-baseline gap-x-2 text-[13px]">
-            <span className={entry.signal.marker === "error" ? "font-medium text-danger" : "text-text-secondary"}>{entry.signal.label}</span>
-            {entry.signal.detail && (
-              <span className={entry.signal.marker === "logic" ? "font-mono text-xs text-text-muted" : "text-xs text-text-muted"}>
-                {entry.signal.detail}
-              </span>
-            )}
-            <span className="text-[11px] text-text-muted">{time}</span>
-          </div>
-        ) : (
-          <MessageBlock entry={entry} leadName={leadName} time={time} />
-        )}
+    <li className={`flex ${isLead ? "justify-start" : "justify-end"}`}>
+      <div className={`max-w-[min(68%,560px)] min-w-0 px-4 py-3 ${isLead ? "rounded-[16px_16px_16px_4px] bg-surface-2" : "rounded-[16px_16px_4px_16px] bg-surface-3"}`}>
+        <MessageBlock entry={entry} leadName={leadName} time={time} />
       </div>
     </li>
   );
@@ -131,7 +109,7 @@ function MessageBlock({ entry, leadName, time }: { entry: TimelineEntry; leadNam
 
   return (
     <div>
-      <p className="flex flex-wrap items-baseline gap-x-1.5 text-[12px] text-text-muted">
+      <p className="flex flex-wrap items-baseline gap-x-1.5 text-xs text-text-muted">
         {actorLabel}
         <span aria-hidden="true">·</span>
         <span>{kindLabel(entry)}</span>
@@ -139,14 +117,14 @@ function MessageBlock({ entry, leadName, time }: { entry: TimelineEntry; leadNam
         <span>{time}</span>
       </p>
 
-      <p className={`mt-1 whitespace-pre-wrap text-sm leading-relaxed ${entry.actor === "AUTOMATION" ? "text-text-secondary" : "text-text"}`}>
+      <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-text">
         {entry.text ?? <span className="italic text-text-muted">sem texto</span>}
       </p>
 
       {entry.options && entry.options.length > 0 && (
         <ul className="mt-2 flex flex-wrap gap-1.5" aria-label="Opções enviadas">
           {entry.options.map((o) => (
-            <li key={o} className="rounded-[var(--radius-input)] border border-border px-2.5 py-1 text-xs text-text-secondary">
+            <li key={o} className="rounded-[var(--radius-input)] border border-border-strong px-3 py-1.5 text-xs font-semibold text-text">
               {o}
             </li>
           ))}
@@ -154,14 +132,14 @@ function MessageBlock({ entry, leadName, time }: { entry: TimelineEntry; leadNam
       )}
 
       {entry.button && (
-        <p className="mt-2 inline-flex max-w-full items-baseline gap-2 rounded-[var(--radius-input)] border border-border px-2.5 py-1 text-xs" title={entry.button.url}>
-          <span className="shrink-0 font-medium text-text">{entry.button.title}</span>
-          <span className="max-w-[9rem] truncate text-[11px] text-text-muted/80">{hostOf(entry.button.url)}</span>
+        <p className="mt-2 inline-flex max-w-full items-baseline gap-2 rounded-[var(--radius-input)] border border-border-strong px-3 py-1.5 text-xs" title={entry.button.url}>
+          <span className="shrink-0 font-semibold text-text">{entry.button.title}</span>
+          <span className="max-w-[9rem] truncate text-xs text-text-muted/80">{hostOf(entry.button.url)}</span>
         </p>
       )}
 
       {entry.channel === "comment" && entry.actor === "USER" && entry.externalMediaId && (
-        <p className="mt-1 text-[11px] text-text-muted">
+        <p className="mt-1 text-xs text-text-muted">
           Comentário no post · <span className="font-mono">{truncateMediaId(entry.externalMediaId)}</span>
         </p>
       )}

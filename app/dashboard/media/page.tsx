@@ -71,7 +71,7 @@ export default async function MediaLibraryPage() {
         description="Arquivos usados nas automações — identidade por SHA-256, nunca por nome de arquivo."
       />
 
-      <div className="mx-auto max-w-4xl px-6 pb-10 md:px-8">
+      <div className="mx-auto max-w-4xl px-6 pb-10 md:px-11">
         <Link href="/dashboard" className="mb-5 inline-flex items-center gap-1 text-sm text-text-secondary hover:text-text">
           <ChevronLeft className="h-3.5 w-3.5" /> Dashboard
         </Link>

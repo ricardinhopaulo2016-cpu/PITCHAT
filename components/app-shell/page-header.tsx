@@ -1,20 +1,20 @@
 import type { ReactNode } from "react";
 
-/** Sem hero, sem slogan, sem marketing — título + descrição curta + ação principal (docs/PITCHAT_DESIGN_SYSTEM.md, seção 21 do briefing). */
+/** Título, uma frase que diz o estado da tela e a ação principal. */
 export function PageHeader({
   title,
   description,
   action,
 }: {
   title: string;
-  description?: string;
+  description?: ReactNode;
   action?: ReactNode;
 }) {
   return (
-    <div className="flex items-start justify-between gap-4 px-6 pb-6 pt-7 md:px-8 md:pt-8">
-      <div>
-        <h1 className="text-[28px] font-semibold tracking-[-0.025em] text-text">{title}</h1>
-        {description && <p className="mt-1.5 text-sm text-text-secondary">{description}</p>}
+    <div className="flex flex-wrap items-end justify-between gap-4 px-6 pb-7 pt-8 md:px-11 md:pt-9">
+      <div className="min-w-0">
+        <h1 className="text-[36px] font-semibold leading-[1.1] tracking-[-0.025em] text-text">{title}</h1>
+        {description && <p className="mt-2 text-base text-text-secondary">{description}</p>}
       </div>
       {action && <div className="shrink-0">{action}</div>}
     </div>

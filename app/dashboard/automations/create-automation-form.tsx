@@ -54,17 +54,17 @@ export function CreateAutomationForm({
   return (
     <form
       onSubmit={handleCreate}
-      className="flex flex-wrap items-end gap-3 rounded-[var(--radius-panel-lg)] border border-border-subtle bg-surface-1 p-4"
+      className="flex flex-col gap-4"
     >
       <div className="flex flex-col gap-1.5">
-        <label className="text-xs text-text-muted">Profile</label>
+        <label className="text-xs text-text-muted">Perfil</label>
         <Select
           value={profileId}
           onChange={(e) => {
             setProfileId(e.target.value);
             setSocialAccountId(""); // a conta escolhida pertencia ao profile anterior
           }}
-          className="w-44"
+         
         >
           {profiles.map((p) => (
             <option key={p.id} value={p.id}>
@@ -75,7 +75,7 @@ export function CreateAutomationForm({
       </div>
       <div className="flex flex-col gap-1.5">
         <label className="text-xs text-text-muted">Conta</label>
-        <Select value={socialAccountId} onChange={(e) => setSocialAccountId(e.target.value)} className="w-52">
+        <Select value={socialAccountId} onChange={(e) => setSocialAccountId(e.target.value)}>
           <option value="">Todas as contas do perfil</option>
           {profileAccounts.map((a) => (
             <option key={a.id} value={a.id}>
@@ -86,7 +86,7 @@ export function CreateAutomationForm({
       </div>
       <div className="flex flex-col gap-1.5">
         <label className="text-xs text-text-muted">Nome da automação</label>
-        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: Comentário → DM" className="w-56" />
+        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: EU QUERO do perfil" />
       </div>
       <Button type="submit" variant="primary" disabled={busy !== null || !name.trim()}>
         {busy === "create" ? "Criando…" : "Nova automação"}

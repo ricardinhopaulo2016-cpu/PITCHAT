@@ -28,11 +28,11 @@ export function ContactRow({ contact: c, channelId }: { contact: ContactListItem
       {c.tags.length > 0 && (
         <ul className="hidden shrink-0 items-center gap-1.5 md:flex" aria-label="Tags">
           {c.tags.slice(0, TAGS_SHOWN).map((t) => (
-            <li key={t} className="rounded-full border border-border-subtle bg-surface-1 px-2 py-0.5 text-[11px] text-text-secondary">
+            <li key={t} className="rounded-full border border-border-subtle bg-surface-1 px-2 py-0.5 text-xs text-text-secondary">
               {t}
             </li>
           ))}
-          {extraTags > 0 && <li className="text-[11px] text-text-muted">+{extraTags}</li>}
+          {extraTags > 0 && <li className="text-xs text-text-muted">+{extraTags}</li>}
         </ul>
       )}
 

@@ -111,9 +111,9 @@ export default async function SocialAccountsPage({
 
   return (
     <>
-      <PageHeader title="Social Accounts" description="Contas do Instagram conectadas a cada perfil do PITCHAT." />
+      <PageHeader title="Contas" description="Contas do Instagram conectadas a cada perfil do PITCHAT." />
 
-      <div className="px-6 pb-10 md:px-8">
+      <div className="px-6 pb-10 md:px-11">
         {status === "connected" && (
           <p className="mb-5 rounded-[var(--radius-panel-sm)] border border-success bg-success-soft px-3.5 py-2.5 text-sm text-text">
             Instagram conectado.

@@ -1,8 +1,7 @@
 import Link from "next/link";
 import type { ConversationListItem } from "@/lib/inbox/repo";
-import { ContactAvatar } from "@/components/contacts/contact-avatar";
+import { AccountTile } from "@/components/ui/account-tile";
 import { EmptyState } from "@/components/ui/empty-state";
-import { SignalMarker } from "@/components/icons/pitchat";
 import { platformLabel, timeAgo } from "@/lib/ui/format";
 
 /**
@@ -50,23 +49,21 @@ function ConversationRow({
   channelId?: string | null;
 }) {
   const name = c.contactUsername ? `@${c.contactUsername}` : "Contato";
-  const account = c.socialAccountUsername ? `${platformLabel(c.platform)} · @${c.socialAccountUsername}` : platformLabel(c.platform);
+  const account = c.socialAccountUsername ? `No @${c.socialAccountUsername}` : platformLabel(c.platform);
   const href = channelId ? `/dashboard/inbox?channel=${channelId}&conversation=${c.id}` : `/dashboard/inbox?conversation=${c.id}`;
 
   return (
     <Link
       href={href}
       aria-current={selected ? "true" : undefined}
-      className={`relative flex gap-3 px-4 py-3 transition-colors duration-[var(--motion-fast)] hover:bg-surface-1 ${selected ? "bg-surface-1" : ""}`}
+      className={`flex gap-3 px-5 py-3.5 transition-colors duration-[var(--motion-fast)] hover:bg-surface-1 ${selected ? "bg-surface-2" : ""}`}
     >
-      {selected && <span aria-hidden="true" className="absolute bottom-3 left-0 top-3 w-[2px] rounded-full bg-signal" />}
-
-      <ContactAvatar username={c.contactUsername} avatarUrl={c.contactAvatarUrl} />
+      <AccountTile username={c.socialAccountUsername} size="lg" />
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-2">
           <span className={`truncate text-sm text-text ${c.unread ? "font-semibold" : "font-medium"}`}>{name}</span>
-          <span className="flex shrink-0 items-center gap-1.5 text-[11px] text-text-muted">
+          <span className="flex shrink-0 items-center gap-1.5 text-xs text-text-muted">
             {c.unread && (
               <>
                 <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-signal" />
@@ -77,15 +74,15 @@ function ConversationRow({
           </span>
         </div>
 
-        <p className={`mt-0.5 truncate text-[13px] ${c.unread ? "text-text-secondary" : "text-text-muted"}`}>
+        <p className={`mt-0.5 truncate text-sm ${c.unread ? "text-text" : "text-text-secondary"}`}>
           {c.previewText ?? "Sem mensagens ainda"}
         </p>
 
-        <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-text-muted">
+        <div className="mt-1 flex items-center justify-between gap-2 text-xs text-text-muted">
           <span className="truncate">{account}</span>
           {!c.automationEnabled && (
             <span className="inline-flex shrink-0 items-center gap-1 text-warning">
-              <SignalMarker type="wait" width={9} height={9} /> Manual
+              Manual
             </span>
           )}
         </div>
