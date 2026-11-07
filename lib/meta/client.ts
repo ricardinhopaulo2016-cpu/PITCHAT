@@ -91,6 +91,19 @@ export interface MetaClient {
     text: string;
     buttons: ButtonTemplateButton[];
   }): Promise<SendMessageResult>;
+
+  /**
+   * Instagram User Profile API — GET /{IGSID}?fields=name,username. Doc
+   * oficial (consultada 07/11/2026): exige consentimento do usuário, que só
+   * existe depois que ELE manda mensagem ao perfil (ou toca em icebreaker/menu
+   * persistente); só comentar NÃO basta ("User consent is required to access
+   * user profile"). `name` pode vir null. Opcional na interface: quem não
+   * implementa (fakes de teste) simplesmente fica sem nome.
+   */
+  getUserProfile?(params: {
+    accessToken: string;
+    userId: string;
+  }): Promise<{ name: string | null; username: string | null }>;
 }
 
 // Códigos de rate limit confirmados na doc oficial (seção 11 de
@@ -142,7 +155,35 @@ async function callGraphApi(
   return json;
 }
 
+async function getGraphApi(path: string, accessToken: string): Promise<Record<string, unknown>> {
+  const res = await fetch(`${GRAPH_BASE_URL}/${getGraphApiVersion()}${path}`, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!res.ok) {
+    const error = json.error as
+      | { message?: string; code?: number; error_subcode?: number }
+      | undefined;
+    throw new MetaApiError(error?.message ?? `Meta API retornou HTTP ${res.status}`, {
+      kind: classifyMetaError(res.status, error?.code),
+      code: error?.code,
+      subcode: error?.error_subcode,
+      httpStatus: res.status,
+    });
+  }
+  return json;
+}
+
 export const realMetaClient: MetaClient = {
+  async getUserProfile({ accessToken, userId }) {
+    const json = await getGraphApi(`/${userId}?fields=name,username`, accessToken);
+    return {
+      name: typeof json.name === "string" && json.name.trim() ? json.name : null,
+      username: typeof json.username === "string" ? json.username : null,
+    };
+  },
+
   async sendPublicReply({ accessToken, commentId, text }) {
     await callGraphApi(`/${commentId}/replies`, accessToken, { message: text });
   },

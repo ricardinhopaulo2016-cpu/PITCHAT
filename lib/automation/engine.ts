@@ -5,6 +5,7 @@ import { MetaApiError, type MetaClient } from "@/lib/meta/client";
 import { checkUrlAllowed } from "./ssrf-guard";
 import { getRetryBackoffMinutes } from "./retry-policy";
 import { recordOutboundMessage } from "./messages";
+import { NAME_TOKEN, firstNameFrom, renderMessageText } from "./personalize";
 import * as qstash from "@/lib/qstash";
 
 const MAX_STEPS_PER_INVOCATION = 50; // trava de segurança contra loop infinito num grafo mal configurado
@@ -87,6 +88,48 @@ async function logStep(
   });
 }
 
+/**
+ * Primeiro nome do contato para o token {nome}. Melhor esforço: nunca lança.
+ * 1) usa contacts.display_name salvo; 2) se permitido, busca na Meta (só funciona
+ * depois que a pessoa mandou mensagem) e salva em display_name; 3) senão null.
+ */
+async function resolveFirstName(
+  admin: SupabaseClient,
+  meta: MetaClient,
+  p: {
+    workspaceId: string;
+    contactId: string | null;
+    accessToken: string;
+    recipientId: string;
+    allowFetch: boolean;
+  }
+): Promise<string | null> {
+  if (!p.contactId) return null;
+  try {
+    const { data } = await admin
+      .from("contacts")
+      .select("display_name")
+      .eq("id", p.contactId)
+      .eq("workspace_id", p.workspaceId)
+      .maybeSingle();
+    const stored = firstNameFrom((data as { display_name?: string | null } | null)?.display_name);
+    if (stored) return stored;
+    if (!p.allowFetch || !meta.getUserProfile || !p.recipientId) return null;
+
+    const profile = await meta.getUserProfile({ accessToken: p.accessToken, userId: p.recipientId });
+    if (profile.name) {
+      await admin
+        .from("contacts")
+        .update({ display_name: profile.name })
+        .eq("id", p.contactId)
+        .eq("workspace_id", p.workspaceId);
+    }
+    return firstNameFrom(profile.name);
+  } catch {
+    return null;
+  }
+}
+
 /** Quantas vezes ESTE node já falhou nesta run — base pro cálculo de backoff do retry. */
 async function countFailedAttempts(admin: SupabaseClient, runId: string, nodeId: string): Promise<number> {
   const { count } = await admin
@@ -143,7 +186,22 @@ export async function advanceRun(
   let branchLabel: string | undefined;
 
   for (let steps = 0; steps < MAX_STEPS_PER_INVOCATION; steps++) {
-    const outcome = evaluateNode(currentNode, ctx);
+    let outcome = evaluateNode(currentNode, ctx);
+
+    // Personalização: só toca em mensagens que usam {nome}. Busca o nome na
+    // Meta apenas em DM (send_message/quick_reply), onde já existe interação do
+    // usuário (consentimento da User Profile API). Em resposta pública e
+    // private reply usa só o que já está salvo. Qualquer falha = sem nome.
+    if ("text" in outcome && typeof outcome.text === "string" && outcome.text.includes(NAME_TOKEN)) {
+      const firstName = await resolveFirstName(admin, meta, {
+        workspaceId: run.workspace_id,
+        contactId: run.contact_id,
+        accessToken: socialAccount.accessToken,
+        recipientId,
+        allowFetch: outcome.kind === "send_message" || outcome.kind === "quick_reply",
+      });
+      outcome = { ...outcome, text: renderMessageText(outcome.text, firstName) } as typeof outcome;
+    }
 
     try {
       switch (outcome.kind) {
