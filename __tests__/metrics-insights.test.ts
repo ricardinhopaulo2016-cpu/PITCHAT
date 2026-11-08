@@ -169,7 +169,7 @@ describe("frases", () => {
       periodLabel: "em todo o histórico",
     });
     expect(buildInsights({ ...base, peak: { hour: "2026-11-08T14", total: 90 }, activeHours: 30, averageHourly: 5 })[0].text).toBe(`Pico de 90 mensagens em 08/11 às 14h ${PERIOD}.`);
-    expect(buildInsights({ ...base, internalLatency: { samples: 40, p50: 30, p95: 300 } })[0].text).toBe(`Entre os pedidos que receberam DM ${PERIOD}, 95% receberam em até 5min depois da gravação do comentário, em 40 amostras.`);
+    expect(buildInsights({ ...base, internalLatency: { samples: 40, p50: 30, p95: 300 } })[0].text).toBe(`Entre os pedidos que receberam DM ${PERIOD}, 95% receberam em até 5min depois do comentário (horário real do Instagram quando disponível, senão a gravação), em 40 amostras.`);
   });
 
   it("sugere link em falha por nó e fila", () => {

@@ -208,7 +208,7 @@ const SOURCE_LABELS: { key: SourceKey; label: string }[] = [
 
 export function ConfidenceSection({ result, period }: { result: RpcResult<RawConfidence>; period: MetricsPeriod }) {
   return (
-    <SectionPanel id="confianca" title="Confiança dos dados" caption={`Recorte ${period.label}. Comentários são datados pela gravação no PITCHAT.`}>
+    <SectionPanel id="confianca" title="Confiança dos dados" caption={`Recorte ${period.label}. Comentários novos usam o horário real do Instagram; os antigos, a hora de gravação no PITCHAT.`}>
       <BlockGate result={result}>
         {(data) => (
           <>

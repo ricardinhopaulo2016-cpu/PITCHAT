@@ -104,6 +104,15 @@ export interface MetaClient {
     accessToken: string;
     userId: string;
   }): Promise<{ name: string | null; username: string | null }>;
+
+  /**
+   * GET /{comment-id}?fields=timestamp (campo `timestamp` listado em
+   * docs/PITCHAT_META_INTEGRATION.md). O webhook de comentário NÃO traz a hora
+   * do comentário: o `time` do envelope é a hora do envio do webhook. Devolve
+   * ISO ou null se a Meta não responder um horário válido. Opcional: quem não
+   * implementa (fakes de teste) simplesmente fica sem horário de origem.
+   */
+  getCommentTimestamp?(params: { accessToken: string; commentId: string }): Promise<string | null>;
 }
 
 // Códigos de rate limit confirmados na doc oficial (seção 11 de
@@ -176,6 +185,12 @@ async function getGraphApi(path: string, accessToken: string): Promise<Record<st
 }
 
 export const realMetaClient: MetaClient = {
+  async getCommentTimestamp({ accessToken, commentId }) {
+    const json = await getGraphApi(`/${commentId}?fields=timestamp`, accessToken);
+    if (typeof json.timestamp !== "string") return null;
+    const ms = new Date(json.timestamp).getTime();
+    return Number.isNaN(ms) ? null : new Date(ms).toISOString();
+  },
   async getUserProfile({ accessToken, userId }) {
     const json = await getGraphApi(`/${userId}?fields=name,username`, accessToken);
     return {

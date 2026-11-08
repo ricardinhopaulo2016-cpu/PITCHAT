@@ -247,3 +247,54 @@ describe("ingestInstagramMessage — DM avulsa (achado real 24/09/2026: antes er
     expect(fake.__tables.messages).toHaveLength(0);
   });
 });
+
+describe("ingestInstagramComment — horário real do comentário", () => {
+  const event = {
+    type: "InstagramCommentReceived" as const,
+    externalAccountId: "ig-account-1",
+    externalCommentId: "c-ts",
+    externalMediaId: "media1",
+    parentCommentId: null,
+    fromUserId: "user-igsid-1",
+    fromUsername: "alguem",
+    text: "piada de papagaio",
+    timestamp: new Date().toISOString(),
+  };
+
+  function seed() {
+    const fake = createFakeSupabase();
+    fake.__tables.contacts.push({ id: "contact-ts", workspace_id: "ws1", platform: "instagram", platform_user_id: "user-igsid-1" });
+    return fake;
+  }
+
+  it("grava source_created_at com o horário que a Meta devolve", async () => {
+    const fake = seed();
+    const meta = { ...fakeMeta(), getCommentTimestamp: vi.fn().mockResolvedValue("2026-11-08T20:00:00.000Z") };
+
+    await ingestInstagramComment(fake as never, meta, socialAccount, event);
+
+    expect(meta.getCommentTimestamp).toHaveBeenCalledWith(expect.objectContaining({ commentId: "c-ts" }));
+    expect(fake.__tables.comments[0].source_created_at).toBe("2026-11-08T20:00:00.000Z");
+  });
+
+  it("se a busca do horário falha, o comentário segue sem source_created_at e a automação não é barrada", async () => {
+    const fake = seed();
+    const meta = { ...fakeMeta(), getCommentTimestamp: vi.fn().mockRejectedValue(new Error("Meta fora do ar")) };
+
+    const result = await ingestInstagramComment(fake as never, meta, socialAccount, event);
+
+    expect(result).toEqual({ processed: true });
+    expect(fake.__tables.comments).toHaveLength(1);
+    expect(fake.__tables.comments[0].source_created_at).toBeUndefined();
+  });
+
+  it("não consulta a Meta de novo em reenvio de webhook do mesmo comentário", async () => {
+    const fake = seed();
+    const meta = { ...fakeMeta(), getCommentTimestamp: vi.fn().mockResolvedValue("2026-11-08T20:00:00.000Z") };
+
+    await ingestInstagramComment(fake as never, meta, socialAccount, event);
+    await ingestInstagramComment(fake as never, meta, socialAccount, event);
+
+    expect(meta.getCommentTimestamp).toHaveBeenCalledTimes(1);
+  });
+});

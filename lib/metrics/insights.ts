@@ -138,7 +138,7 @@ function slowInternal(input: InsightInput): Insight | null {
   return {
     id: "slow_internal",
     severity: "attention",
-    text: `Entre os pedidos que receberam DM ${input.periodLabel}, 95% receberam em até ${formatDuration(latency.p95)} depois da gravação do comentário, em ${formatCount(latency.samples)} amostras.`,
+    text: `Entre os pedidos que receberam DM ${input.periodLabel}, 95% receberam em até ${formatDuration(latency.p95)} depois do comentário (horário real do Instagram quando disponível, senão a gravação), em ${formatCount(latency.samples)} amostras.`,
     action: "Confira a fila de tarefas e erros de envio.",
     periodLabel: input.periodLabel,
     value: latency.p95,

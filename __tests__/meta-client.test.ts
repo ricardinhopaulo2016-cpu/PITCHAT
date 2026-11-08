@@ -107,3 +107,24 @@ describe("realMetaClient.sendButtonTemplate", () => {
     });
   });
 });
+
+describe("realMetaClient.getCommentTimestamp", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("pede só o campo timestamp e devolve ISO normalizado", async () => {
+    const fetchMock = fetchReturning({ id: "c1", timestamp: "2026-11-08T17:00:00+0000" });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await realMetaClient.getCommentTimestamp!({ accessToken: "t", commentId: "c1" });
+
+    expect(String(fetchMock.mock.calls[0][0])).toContain("/c1?fields=timestamp");
+    expect(result).toBe("2026-11-08T17:00:00.000Z");
+  });
+
+  it("devolve null quando a Meta não manda timestamp válido", async () => {
+    vi.stubGlobal("fetch", fetchReturning({ id: "c1", timestamp: "lixo" }));
+    expect(await realMetaClient.getCommentTimestamp!({ accessToken: "t", commentId: "c1" })).toBeNull();
+    vi.stubGlobal("fetch", fetchReturning({ id: "c1" }));
+    expect(await realMetaClient.getCommentTimestamp!({ accessToken: "t", commentId: "c1" })).toBeNull();
+  });
+});

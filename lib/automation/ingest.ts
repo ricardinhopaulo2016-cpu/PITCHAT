@@ -85,6 +85,27 @@ export async function ingestInstagramComment(
     if (!withinRecovery) return { processed: false, reason: "DUPLICATE_COMMENT_IGNORED" };
   }
 
+  // Horário real do comentário no Instagram: o webhook não traz, então busca
+  // na Graph API. Só no primeiro insert, e nunca derruba a automação: sem
+  // horário, a coluna fica null e as métricas caem na hora de gravação.
+  if (insertedComment && meta.getCommentTimestamp) {
+    try {
+      const sourceCreatedAt = await meta.getCommentTimestamp({
+        accessToken: decryptToken(socialAccount.access_token_encrypted),
+        commentId: event.externalCommentId,
+      });
+      if (sourceCreatedAt) {
+        await admin
+          .from("comments")
+          .update({ source_created_at: sourceCreatedAt })
+          .eq("id", (insertedComment as { id: string }).id)
+          .eq("workspace_id", socialAccount.workspace_id);
+      }
+    } catch {
+      // Best-effort: falha da Meta ou do banco aqui não pode impedir o disparo.
+    }
+  }
+
   const conversation = await upsertConversation(admin, socialAccount.workspace_id, socialAccount.id, contact.id);
 
   // Human takeover (achado real 24/09/2026): antes disso, automation_enabled
