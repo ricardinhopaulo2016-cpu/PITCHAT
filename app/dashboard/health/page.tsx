@@ -5,6 +5,7 @@ import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { PageHeader } from "@/components/app-shell/page-header";
 import { SignalMarker } from "@/components/icons/pitchat";
 import { EmptyState } from "@/components/ui/empty-state";
+import { SectionPanel, Stat } from "@/components/ui/section-panel";
 import { normalizeChannelParam, resolveChannel } from "@/lib/channel/repo";
 import { buildHref } from "@/lib/channel/url";
 import {
@@ -55,29 +56,6 @@ function StatusRow({ label, status, reason }: { label: string; status: Operation
         {config.label}
       </span>
     </li>
-  );
-}
-
-function Stat({ label, value, color }: { label: string; value: number | string; color?: string }) {
-  return (
-    <div className="flex flex-col gap-1 border-r border-border-subtle px-4 py-3 last:border-r-0">
-      <span className="font-mono text-xl font-medium tabular-nums" style={{ color: color ?? "var(--text)" }}>
-        {value}
-      </span>
-      <span className="text-xs text-text-muted">{label}</span>
-    </div>
-  );
-}
-
-function SectionPanel({ title, children, caption }: { title: string; children: React.ReactNode; caption?: string }) {
-  return (
-    <div className="overflow-hidden rounded-[var(--radius-panel-lg)] border border-border-subtle bg-surface-1">
-      <div className="border-b border-border-subtle bg-surface-1 px-5 py-2.5">
-        <p className="text-lg font-semibold text-text">{title}</p>
-        {caption && <p className="mt-0.5 text-xs text-text-muted">{caption}</p>}
-      </div>
-      {children}
-    </div>
   );
 }
 
@@ -395,6 +373,14 @@ export default async function HealthDashboardPage({
                       <p className="font-mono text-xs text-text-muted">{formatDateTime(entry.at)}</p>
                       <p className="text-sm font-medium text-text">{entry.label}</p>
                       <p className="text-xs text-text-secondary">{entry.detail}</p>
+                      {entry.runId && (
+                        <Link
+                          href={`${buildHref("/dashboard/metrics", { run: entry.runId, ...(channel ? { channel: channel.id } : {}) })}#incidente`}
+                          className="text-xs text-text-secondary underline hover:text-text"
+                        >
+                          Ver nó e causa
+                        </Link>
+                      )}
                     </div>
                   </li>
                 );

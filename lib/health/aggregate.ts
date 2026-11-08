@@ -12,7 +12,7 @@ import { HEALTH_THRESHOLDS as T } from "./thresholds";
 export type OperationalStatus = "operational" | "attention" | "incident";
 export type SectionHealth = { status: OperationalStatus; reason: string };
 export type IncidentSeverity = "info" | "warning" | "incident";
-export type IncidentEntry = { severity: IncidentSeverity; at: string; label: string; detail: string };
+export type IncidentEntry = { severity: IncidentSeverity; at: string; label: string; detail: string; runId?: string };
 
 // ---------- inputs (subconjunto de colunas — NUNCA token/secret) ----------
 
@@ -332,10 +332,11 @@ export function buildIncidentRail(input: {
         at: r.updated_at,
         label: "automation retry",
         detail: attempt ? `tentativa ${attempt}/4 — run ${r.id.slice(0, 8)}` : `run ${r.id.slice(0, 8)}`,
+        runId: r.id.slice(0, 8),
       });
     }
     if (r.status === "failed") {
-      entries.push({ severity: "warning", at: r.updated_at, label: "automation run failed", detail: `run ${r.id.slice(0, 8)}` });
+      entries.push({ severity: "warning", at: r.updated_at, label: "automation run failed", detail: `run ${r.id.slice(0, 8)}`, runId: r.id.slice(0, 8) });
     }
   }
 

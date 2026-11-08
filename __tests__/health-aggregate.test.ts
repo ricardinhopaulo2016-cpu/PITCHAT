@@ -290,4 +290,14 @@ describe("buildIncidentRail", () => {
     expect(rail[0].detail).toContain("11111111"); // truncado
     expect(rail[0].detail).not.toContain("11111111-2222-3333-4444-555555555555"); // nunca o UUID inteiro
   });
+
+  it("entrada de run falha traz runId com 8 caracteres, sem o UUID inteiro", () => {
+    const automationRuns: AutomationRunRow[] = [
+      { id: "a1940a6a-2222-3333-4444-555555555555", status: "failed", waiting_reason: null, started_at: minutesAgo(1), updated_at: minutesAgo(1) },
+    ];
+    const rail = buildIncidentRail({ webhookEvents: [], automationRuns, jobs: [] });
+    expect(rail[0].runId).toBe("a1940a6a");
+    expect(rail[0].runId).toHaveLength(8);
+    expect(JSON.stringify(rail[0])).not.toContain("a1940a6a-2222-3333-4444-555555555555");
+  });
 });

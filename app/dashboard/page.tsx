@@ -6,10 +6,9 @@ import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { PageHeader } from "@/components/app-shell/page-header";
 import { AccountTile } from "@/components/ui/account-tile";
 import { formatPostTime } from "./publishing/format";
+import { GOAL_PER_POST as GOAL, GOAL_PHRASE } from "@/lib/metrics/constants";
+import { withChannelQuery } from "@/lib/channel/url";
 
-/** A meta da operação: 1.000 comentários EU QUERO por post. */
-const GOAL = 1000;
-const GOAL_PHRASE = "eu quero";
 const TOP_POSTS = 4;
 const DAY_MS = 24 * 60 * 60_000;
 
@@ -196,9 +195,14 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         <section className="overflow-hidden rounded-[var(--radius-panel-lg)] border border-border-subtle bg-surface-1">
           <div className="flex items-center justify-between px-7 py-5">
             <h2 className="text-lg font-semibold text-text">Perfis</h2>
-            <Link href="/dashboard/social-accounts" className="text-sm text-text-secondary hover:text-text">
-              Gerenciar contas
-            </Link>
+            <div className="flex items-center gap-5">
+              <Link href={withChannelQuery("/dashboard/metrics", channel ?? null)} className="text-sm text-text-secondary hover:text-text">
+                Ver métricas
+              </Link>
+              <Link href="/dashboard/social-accounts" className="text-sm text-text-secondary hover:text-text">
+                Gerenciar contas
+              </Link>
+            </div>
           </div>
           {rows.length === 0 ? (
             <p className="border-t border-border-subtle px-7 py-6 text-sm text-text-muted">Nenhuma conta conectada.</p>
