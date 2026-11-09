@@ -1,7 +1,19 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { DeliveryState } from "@/lib/ui/format";
 
-const LIST_LIMIT = 50; // teto de conversas carregadas por vez — nunca "select * sem limite"
+export const CONVERSATIONS_PAGE_SIZE = 50; // teto de conversas carregadas por vez — nunca "select * sem limite"
 const ACTIVITY_LIMIT = 300; // teto pras queries de "última atividade" (messages/comments), bounded independente do nº de conversas
+const PREVIEW_ROUNDS = 3; // rodadas das queries de prévia: conversa muito movimentada não pode esconder a prévia das outras da página
+
+/**
+ * Coluna que ainda não existe no banco: 42703 em select/filtro/order,
+ * PGRST204 em update. Só acontece se o código for ao ar antes da migration
+ * 20261109120000_inbox_unread_and_read_receipts: a tela continua funcionando,
+ * sem contagem de não lidas e sem "Visualizada".
+ */
+function isMissingColumnError(error: { code?: string } | null): boolean {
+  return error?.code === "42703" || error?.code === "PGRST204";
+}
 
 export type ConversationListItem = {
   id: string;
@@ -13,94 +25,210 @@ export type ConversationListItem = {
   socialAccountUsername: string | null;
   automationEnabled: boolean;
   unread: boolean;
+  /** Quantas mensagens a pessoa mandou desde a última vez que a conversa foi aberta. */
+  unreadCount: number;
   previewText: string | null;
   previewAt: string | null;
 };
 
+type Preview = { text: string | null; at: string };
+
+const CONVERSATION_COLUMNS =
+  "id, contact_id, social_account_id, automation_enabled, last_message_at, contact:contacts(username, avatar_url, platform), social_account:social_accounts(username)";
+
+type ConversationQueryOptions = { socialAccountId?: string | null; unreadOnly: boolean; from: number; to: number };
+
 /**
- * Lista conversas do workspace com preview da última atividade — 3 queries
- * fixas (conversas, messages recentes, comments recentes), nunca N+1 por
- * conversa. "Última mensagem" pode vir de `messages` (automação/manual) ou
- * de `comments` (quando a conversa só tem o comentário que a originou, sem
- * nenhuma automação ainda ter respondido) — pega o que for mais recente
- * entre os dois, nunca inventa uma prévia genérica.
+ * Filtros de canal e de não lidas SEMPRE na query, antes do corte da página:
+ * filtrar depois em JS esconderia conversas reais que não estivessem entre as
+ * mais recentes. `id` no fim deixa a ordem estável entre páginas.
+ */
+async function fetchConversationRows(
+  admin: SupabaseClient,
+  workspaceId: string,
+  opts: ConversationQueryOptions
+): Promise<Record<string, unknown>[]> {
+  const scoped = (columns: string) => {
+    const query = admin.from("conversations").select(columns).eq("workspace_id", workspaceId);
+    return opts.socialAccountId ? query.eq("social_account_id", opts.socialAccountId) : query;
+  };
+
+  let query = scoped(`${CONVERSATION_COLUMNS}, last_inbound_at, unread_inbound_count`);
+  if (opts.unreadOnly) query = query.gt("unread_inbound_count", 0);
+  const { data, error } = await query
+    .order("last_inbound_at", { ascending: false, nullsFirst: false })
+    .order("last_message_at", { ascending: false, nullsFirst: false })
+    .order("id", { ascending: true })
+    .range(opts.from, opts.to);
+
+  if (!error) return (data ?? []) as unknown as Record<string, unknown>[];
+  if (!isMissingColumnError(error)) {
+    console.error("[inbox] falha ao listar conversas:", error.message);
+    return [];
+  }
+  if (opts.unreadOnly) return [];
+
+  const { data: legacy } = await scoped(CONVERSATION_COLUMNS)
+    .order("last_message_at", { ascending: false, nullsFirst: false })
+    .order("id", { ascending: true })
+    .range(opts.from, opts.to);
+  return (legacy ?? []) as unknown as Record<string, unknown>[];
+}
+
+/**
+ * Última linha por chave, em poucas rodadas fixas (nunca uma query por
+ * conversa). Cada rodada traz as linhas mais recentes das chaves que ainda
+ * faltam, então uma conversa muito movimentada não apaga a prévia das outras.
+ * `queryIdByKey` diz qual id buscar para cada chave da prévia.
+ */
+async function loadLatestPreviews(
+  queryIdByKey: Map<string, string>,
+  fetchRows: (ids: string[]) => PromiseLike<{ data: unknown[] | null }>,
+  keyOf: (row: Record<string, unknown>) => string
+): Promise<Map<string, Preview>> {
+  const latest = new Map<string, Preview>();
+
+  for (let round = 0; round < PREVIEW_ROUNDS; round++) {
+    const pendingIds = [...queryIdByKey].filter(([key]) => !latest.has(key)).map(([, id]) => id);
+    if (pendingIds.length === 0) break;
+
+    const { data } = await fetchRows([...new Set(pendingIds)]);
+    const rows = (data ?? []) as Record<string, unknown>[];
+    for (const row of rows) {
+      const key = keyOf(row);
+      if (queryIdByKey.has(key) && !latest.has(key)) latest.set(key, { text: row.text as string | null, at: row.created_at as string });
+    }
+    if (rows.length < ACTIVITY_LIMIT) break; // veio tudo: quem faltou não tem linha nenhuma
+  }
+  return latest;
+}
+
+/**
+ * Lista uma página de conversas do workspace com preview da última atividade.
+ * Número fixo de queries por página (conversas + rodadas limitadas de prévia),
+ * nunca N+1 por conversa. "Última mensagem" pode vir de `messages`
+ * (automação/manual) ou de `comments` (quando a conversa só tem o comentário
+ * que a originou) — pega o que for mais recente entre os dois, nunca inventa
+ * uma prévia genérica.
+ *
+ * Ordem: última entrada da pessoa; conversas sem entrada depois, por
+ * last_message_at. Mensagem enviada não reordena quem tem entrada.
  */
 export async function listConversations(
   admin: SupabaseClient,
   workspaceId: string,
-  opts: { socialAccountId?: string | null } = {}
-): Promise<ConversationListItem[]> {
-  let query = admin
-    .from("conversations")
-    .select(
-      "id, contact_id, automation_enabled, last_message_at, last_read_at, contact:contacts(username, avatar_url, platform), social_account:social_accounts(username)"
-    )
-    .eq("workspace_id", workspaceId);
-  // Filtro do Channel Switcher (D1) — SEMPRE na query, antes do .limit(): nunca
-  // buscar os 50 mais recentes de todos os canais e filtrar depois em JS
-  // (isso cortaria conversas reais do canal escolhido que não estivessem
-  // entre as 50 mais recentes globais).
-  if (opts.socialAccountId) query = query.eq("social_account_id", opts.socialAccountId);
-  const { data: conversations } = await query.order("last_message_at", { ascending: false, nullsFirst: false }).limit(LIST_LIMIT);
+  opts: { socialAccountId?: string | null; unreadOnly?: boolean; page?: number } = {}
+): Promise<{ conversations: ConversationListItem[]; hasMore: boolean }> {
+  const page = Math.max(1, opts.page ?? 1);
+  const from = (page - 1) * CONVERSATIONS_PAGE_SIZE;
+  // Uma linha a mais só pra saber se existe próxima página, sem contar a tabela.
+  const rows = await fetchConversationRows(admin, workspaceId, {
+    socialAccountId: opts.socialAccountId,
+    unreadOnly: opts.unreadOnly ?? false,
+    from,
+    to: from + CONVERSATIONS_PAGE_SIZE,
+  });
 
-  if (!conversations || conversations.length === 0) return [];
+  const hasMore = rows.length > CONVERSATIONS_PAGE_SIZE;
+  const conversations = rows.slice(0, CONVERSATIONS_PAGE_SIZE);
+  if (conversations.length === 0) return { conversations: [], hasMore: false };
 
-  const conversationIds = conversations.map((c) => c.id as string);
-  const contactIds = conversations.map((c) => c.contact_id as string);
+  // O mesmo contato pode comentar em duas contas, e cada uma é uma conversa.
+  const accountContactKey = (socialAccountId: unknown, contactId: unknown) => `${socialAccountId}:${contactId}`;
+  const accountIds = [...new Set(conversations.map((c) => c.social_account_id as string))];
 
-  const [{ data: recentMessages }, { data: recentComments }] = await Promise.all([
-    admin
-      .from("messages")
-      .select("conversation_id, text, direction, created_at")
-      .in("conversation_id", conversationIds)
-      .order("created_at", { ascending: false })
-      .limit(ACTIVITY_LIMIT),
-    admin
-      .from("comments")
-      .select("contact_id, text, created_at")
-      .in("contact_id", contactIds)
-      .order("created_at", { ascending: false })
-      .limit(ACTIVITY_LIMIT),
+  const [latestMessageByConversation, latestCommentByAccountContact] = await Promise.all([
+    loadLatestPreviews(
+      new Map(conversations.map((c) => [c.id as string, c.id as string])),
+      (ids) =>
+        admin
+          .from("messages")
+          .select("conversation_id, text, direction, created_at")
+          .in("conversation_id", ids)
+          .order("created_at", { ascending: false })
+          .limit(ACTIVITY_LIMIT),
+      (row) => row.conversation_id as string
+    ),
+    loadLatestPreviews(
+      new Map(conversations.map((c) => [accountContactKey(c.social_account_id, c.contact_id), c.contact_id as string])),
+      (ids) =>
+        admin
+          .from("comments")
+          .select("social_account_id, contact_id, text, created_at")
+          .in("social_account_id", accountIds)
+          .in("contact_id", ids)
+          .order("created_at", { ascending: false })
+          .limit(ACTIVITY_LIMIT),
+      (row) => accountContactKey(row.social_account_id, row.contact_id)
+    ),
   ]);
 
-  const latestMessageByConversation = new Map<string, { text: string | null; at: string }>();
-  for (const m of recentMessages ?? []) {
-    if (!latestMessageByConversation.has(m.conversation_id as string)) {
-      latestMessageByConversation.set(m.conversation_id as string, { text: m.text as string | null, at: m.created_at as string });
-    }
-  }
-  const latestCommentByContact = new Map<string, { text: string | null; at: string }>();
-  for (const c of recentComments ?? []) {
-    if (!latestCommentByContact.has(c.contact_id as string)) {
-      latestCommentByContact.set(c.contact_id as string, { text: c.text as string | null, at: c.created_at as string });
-    }
-  }
+  return {
+    hasMore,
+    conversations: conversations.map((c) => {
+      const msg = latestMessageByConversation.get(c.id as string);
+      const comment = latestCommentByAccountContact.get(accountContactKey(c.social_account_id, c.contact_id));
+      const useMsg = msg && (!comment || msg.at > comment.at);
+      const preview = useMsg ? msg : comment;
+      // DM só com anexo é gravada com text null: nunca mostrar como comentário.
+      const previewFallback = useMsg ? "Mensagem sem texto" : comment ? "Comentário recebido" : null;
 
-  return conversations.map((c) => {
-    const msg = latestMessageByConversation.get(c.id as string);
-    const comment = latestCommentByContact.get(c.contact_id as string);
-    const useMsg = msg && (!comment || msg.at > comment.at);
-    const preview = useMsg ? msg : comment;
+      const lastMessageAt = c.last_message_at as string | null;
+      const unreadCount = (c.unread_inbound_count as number | null | undefined) ?? 0;
+      const contact = c.contact as unknown as { username: string | null; avatar_url: string | null; platform: string | null } | null;
 
-    const lastMessageAt = c.last_message_at as string | null;
-    const lastReadAt = c.last_read_at as string | null;
-    const contact = c.contact as unknown as { username: string | null; avatar_url: string | null; platform: string | null } | null;
-
-    return {
-      id: c.id as string,
-      contactId: c.contact_id as string,
-      contactUsername: contact?.username ?? null,
-      contactAvatarUrl: contact?.avatar_url ?? null,
-      platform: contact?.platform ?? "instagram",
-      socialAccountUsername: (c.social_account as unknown as { username: string | null } | null)?.username ?? null,
-      automationEnabled: c.automation_enabled !== false,
-      unread: !!lastMessageAt && (!lastReadAt || lastMessageAt > lastReadAt),
-      previewText: preview?.text ?? (comment ? "Comentário recebido" : null),
-      previewAt: preview?.at ?? lastMessageAt,
-    };
-  });
+      return {
+        id: c.id as string,
+        contactId: c.contact_id as string,
+        contactUsername: contact?.username ?? null,
+        contactAvatarUrl: contact?.avatar_url ?? null,
+        platform: contact?.platform ?? "instagram",
+        socialAccountUsername: (c.social_account as unknown as { username: string | null } | null)?.username ?? null,
+        automationEnabled: c.automation_enabled !== false,
+        unread: unreadCount > 0,
+        unreadCount,
+        previewText: preview?.text ?? previewFallback,
+        previewAt: preview?.at ?? lastMessageAt,
+      };
+    }),
+  };
 }
 
+/** Conversas com não lidas no workspace (e no canal, se houver). Sem a coluna ainda, devolve 0. */
+export async function countUnreadConversations(
+  admin: SupabaseClient,
+  workspaceId: string,
+  opts: { socialAccountId?: string | null } = {}
+): Promise<number> {
+  let query = admin
+    .from("conversations")
+    .select("id", { count: "exact", head: true })
+    .eq("workspace_id", workspaceId);
+  if (opts.socialAccountId) query = query.eq("social_account_id", opts.socialAccountId);
+  const { count, error } = await query.gt("unread_inbound_count", 0);
+  if (error) {
+    if (!isMissingColumnError(error)) console.error("[inbox] falha ao contar não lidas:", error.message);
+    return 0;
+  }
+  return count ?? 0;
+}
+
+/**
+ * Abrir a conversa zera as não lidas. Validar o workspace aqui é obrigatório:
+ * o client é service_role e o id vem da URL.
+ */
+export async function markConversationRead(admin: SupabaseClient, conversationId: string, workspaceId: string): Promise<void> {
+  const lastReadAt = new Date().toISOString();
+  const update = (patch: Record<string, unknown>) =>
+    admin.from("conversations").update(patch).eq("id", conversationId).eq("workspace_id", workspaceId);
+
+  // Só grava se havia não lida: cada gravação vira evento em tempo real, e a
+  // tela aberta recarregaria e gravaria de novo, sem parar.
+  const { error } = await update({ last_read_at: lastReadAt, unread_inbound_count: 0 }).gt("unread_inbound_count", 0);
+  if (!error) return;
+  if (isMissingColumnError(error)) await update({ last_read_at: lastReadAt });
+  else console.error("[inbox] falha ao marcar conversa como lida:", error.message);
+}
 
 export type ConversationRow = {
   id: string;
@@ -155,6 +283,8 @@ export type TimelineEntry = {
   button?: { title: string; url: string };
   /** Só em `channel: "engine"`. */
   signal?: TimelineSignal;
+  /** Só em DM enviada (automação ou humano). Comentário e resposta pública não têm. */
+  delivery?: DeliveryState;
 };
 
 export type AutomationRunSummary = {
@@ -213,10 +343,20 @@ type MessageRow = {
   origin: string | null;
   type?: string | null;
   payload?: unknown;
+  status?: string | null;
+  read_at?: string | null;
   created_at: string;
   sent_at: string | null;
   received_at: string | null;
 };
+
+/** Sem confirmação da Meta a DM é só "enviada": nunca afirma que a pessoa não viu. */
+function deliveryOf(m: MessageRow): DeliveryState | undefined {
+  if (m.direction !== "outbound") return undefined;
+  if (m.status === "failed") return { state: "failed" };
+  if (m.status !== "sent" && m.status !== "delivered") return undefined;
+  return m.read_at ? { state: "seen", at: m.read_at } : { state: "sent" };
+}
 
 function stepToEntry(s: RunStepRow): TimelineEntry | null {
   const base = { id: `step-${s.id}`, at: s.started_at, actor: "AUTOMATION" as const, text: null };
@@ -294,6 +434,7 @@ export function composeTimeline(input: { comments: CommentRow[]; messages: Messa
     const actor: TimelineEntry["actor"] = m.direction === "inbound" ? "USER" : m.origin === "manual" ? "HUMAN" : "AUTOMATION";
     const payload = (m.payload ?? {}) as { options?: { title?: string }[]; button?: { title?: string; url?: string } };
     const options = (payload.options ?? []).map((o) => o.title).filter((t): t is string => !!t);
+    const delivery = deliveryOf(m);
     timeline.push({
       id: `msg-${m.id}`,
       at: m.sent_at ?? m.received_at ?? m.created_at,
@@ -303,11 +444,26 @@ export function composeTimeline(input: { comments: CommentRow[]; messages: Messa
       ...(m.type ? { messageType: m.type } : {}),
       ...(options.length > 0 ? { options } : {}),
       ...(payload.button?.title && payload.button.url ? { button: { title: payload.button.title, url: payload.button.url } } : {}),
+      ...(delivery ? { delivery } : {}),
     });
   }
 
   timeline.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
   return timeline;
+}
+
+/**
+ * Mensagens mais recentes da conversa em ordem cronológica: o teto corta o
+ * começo da conversa, nunca o fim (o que a pessoa acabou de mandar).
+ */
+async function loadTimelineMessages(admin: SupabaseClient, conversationId: string): Promise<MessageRow[]> {
+  const baseColumns = "id, text, direction, origin, type, payload, status, created_at, sent_at, received_at";
+  const fetchWith = (columns: string) =>
+    admin.from("messages").select(columns).eq("conversation_id", conversationId).order("created_at", { ascending: false }).limit(ACTIVITY_LIMIT);
+
+  const { data, error } = await fetchWith(`${baseColumns}, read_at`);
+  const rows = error && isMissingColumnError(error) ? (await fetchWith(baseColumns)).data : data;
+  return ((rows ?? []) as unknown as MessageRow[]).reverse();
 }
 
 /**
@@ -322,20 +478,15 @@ export async function loadConversationTimeline(
   admin: SupabaseClient,
   params: { conversationId: string; contactId: string; socialAccountId: string }
 ): Promise<{ timeline: TimelineEntry[]; automationRuns: AutomationRunSummary[] }> {
-  const [{ data: comments }, { data: messages }, { data: runs }] = await Promise.all([
+  const [{ data: comments }, messages, { data: runs }] = await Promise.all([
     admin
       .from("comments")
       .select("id, text, created_at, external_media_id")
       .eq("social_account_id", params.socialAccountId)
       .eq("contact_id", params.contactId)
-      .order("created_at", { ascending: true })
+      .order("created_at", { ascending: false })
       .limit(ACTIVITY_LIMIT),
-    admin
-      .from("messages")
-      .select("id, text, direction, origin, type, payload, created_at, sent_at, received_at")
-      .eq("conversation_id", params.conversationId)
-      .order("created_at", { ascending: true })
-      .limit(ACTIVITY_LIMIT),
+    loadTimelineMessages(admin, params.conversationId),
     admin
       .from("automation_runs")
       .select("id, status, waiting_reason, started_at, automation:automations(name)")
@@ -378,8 +529,8 @@ export async function loadConversationTimeline(
   const steps = [...stepsById.values()];
 
   const timeline = composeTimeline({
-    comments: (comments ?? []) as unknown as CommentRow[],
-    messages: (messages ?? []) as unknown as MessageRow[],
+    comments: ((comments ?? []) as unknown as CommentRow[]).reverse(),
+    messages,
     steps,
   });
 

@@ -41,6 +41,20 @@ export function dayKey(iso: string): string {
   return new Date(iso).toLocaleDateString("en-CA", { timeZone: TZ });
 }
 
+/** Texto da bolinha de não lidas: `7`, `99+`, ou null quando não há nenhuma. */
+export function formatUnreadBadge(count: number): string | null {
+  if (!Number.isFinite(count) || count <= 0) return null;
+  return count > 99 ? "99+" : String(Math.floor(count));
+}
+
+export type DeliveryState = { state: "sent" } | { state: "seen"; at: string } | { state: "failed" };
+
+/** `Enviada`, `Visualizada 18:30` ou `Falha no envio`. Sem confirmação da Meta, é "Enviada". */
+export function formatDeliveryLabel(delivery: DeliveryState): string {
+  if (delivery.state === "seen") return `Visualizada ${formatClock(delivery.at)}`;
+  return delivery.state === "failed" ? "Falha no envio" : "Enviada";
+}
+
 export function platformLabel(platform: string): string {
   return platform === "instagram" ? "Instagram" : platform;
 }

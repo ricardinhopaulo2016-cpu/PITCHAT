@@ -10,14 +10,26 @@ import { SoundToggle } from "@/components/ui/sound-toggle";
 import { LogoutButton } from "@/app/dashboard/logout-button";
 import type { ChannelAccount } from "@/lib/channel/repo";
 import { buildChannelSwitchHref, CHANNEL_PARAM, withChannelQuery } from "@/lib/channel/url";
-import { NAV_ITEMS } from "./nav-items";
+import { UnreadBadge } from "@/components/ui/unread-badge";
+import { INBOX_HREF, NAV_ITEMS, inboxUnreadLabel } from "./nav-items";
+import { useInboxUnreadCount } from "./inbox-unread-provider";
+import { LiveStatus } from "./realtime-provider";
 
 /**
  * Menu lateral com nome em cada item e as contas sempre à vista. O filtro por
  * conta continua na URL (`?channel=<uuid>`). Em automações ele não se aplica,
  * porque a automação pertence ao perfil: as contas viram só contexto.
  */
-export function Sidebar({ workspaceName, email, accounts }: { workspaceName: string; email: string; accounts: ChannelAccount[] }) {
+export function Sidebar({
+  workspaceName,
+  email,
+  accounts,
+}: {
+  workspaceName: string;
+  email: string;
+  accounts: ChannelAccount[];
+}) {
+  const inboxUnreadCount = useInboxUnreadCount();
   const pathname = usePathname() ?? "/dashboard";
   const searchParams = useSearchParams();
   const channelId = searchParams.get(CHANNEL_PARAM);
@@ -46,6 +58,7 @@ export function Sidebar({ workspaceName, email, accounts }: { workspaceName: str
             >
               <Icon className="h-[19px] w-[19px] shrink-0" strokeWidth={1.7} />
               {item.label}
+              {item.href === INBOX_HREF && <UnreadBadge count={inboxUnreadCount} label={inboxUnreadLabel(inboxUnreadCount)} className="ml-auto" />}
             </Link>
           );
         })}
@@ -98,6 +111,8 @@ export function Sidebar({ workspaceName, email, accounts }: { workspaceName: str
         })}
         {accounts.length === 0 && <p className="px-3 text-sm text-text-muted">Nenhuma conta conectada</p>}
       </div>
+
+      <LiveStatus className="-my-3 px-3" />
 
       <DropdownMenu.Root>
         <DropdownMenu.Trigger asChild>

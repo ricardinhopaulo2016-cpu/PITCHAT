@@ -208,9 +208,11 @@ export async function fetchInstagramIdentity(accessToken: string): Promise<Insta
   return { igUserId: String(json.user_id), username: json.username ?? null };
 }
 
-// Fields mínimos pro MVP (docs/PITCHAT_META_INTEGRATION.md §3) — mesmos já
-// assinados a nível de app.
-const WEBHOOK_FIELDS = ["comments", "messages", "messaging_postbacks"].join(",");
+// Fields assinados por conta (docs/PITCHAT_META_INTEGRATION.md §3). Todos
+// precisam estar marcados também no painel do app na Meta. messaging_seen foi
+// adicionado depois: conta já conectada só recebe após reassinar, ver
+// lib/meta/resubscribe.ts.
+const WEBHOOK_FIELDS = ["comments", "messages", "messaging_postbacks", "messaging_seen"].join(",");
 
 /**
  * Gap real encontrado no primeiro teste E2E (10/09/2026): assinar o webhook

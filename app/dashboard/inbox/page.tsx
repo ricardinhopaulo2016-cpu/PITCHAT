@@ -3,10 +3,16 @@ import { redirect } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import { getAuthContext } from "@/lib/auth/session";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
-import { listConversations, loadConversationForWorkspace, loadConversationTimeline } from "@/lib/inbox/repo";
+import {
+  countUnreadConversations,
+  listConversations,
+  loadConversationForWorkspace,
+  loadConversationTimeline,
+  markConversationRead,
+} from "@/lib/inbox/repo";
+import { buildInboxHref, parseInboxFilter, parseInboxPage } from "@/lib/inbox/url";
 import { resolveChannel } from "@/lib/channel/repo";
 import { resolveConversationChannelParam } from "@/lib/channel/deep-link";
-import { buildHref } from "@/lib/channel/url";
 import { PageHeader } from "@/components/app-shell/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ContactAvatar } from "@/components/contacts/contact-avatar";
@@ -22,9 +28,11 @@ export const dynamic = "force-dynamic";
 export default async function InboxPage({
   searchParams,
 }: {
-  searchParams: Promise<{ conversation?: string; channel?: string }>;
+  searchParams: Promise<{ conversation?: string; channel?: string; filter?: string; page?: string }>;
 }) {
-  const { conversation: conversationId, channel: channelParam } = await searchParams;
+  const { conversation: conversationId, channel: channelParam, filter: filterParam, page: pageParam } = await searchParams;
+  const filter = parseInboxFilter(filterParam);
+  const page = parseInboxPage(pageParam);
 
   const auth = await getAuthContext();
   if (!auth) redirect("/login");
@@ -39,9 +47,7 @@ export default async function InboxPage({
 
   const decision = resolveConversationChannelParam(channelParam, selectedPreliminary?.social_account_id ?? null);
   if (decision.action === "redirect") {
-    const qs = new URLSearchParams({ channel: decision.channelId });
-    if (conversationId) qs.set("conversation", conversationId);
-    redirect(`/dashboard/inbox?${qs.toString()}`);
+    redirect(buildInboxHref({ channelId: decision.channelId, filter, page, conversationId }));
   }
 
   const channelId = decision.channelId;
@@ -74,11 +80,15 @@ export default async function InboxPage({
     }
   }
 
-  // listConversations (coluna 1) e o `selected` (já resolvido acima) não
-  // dependem um do outro — paraleliza (reauditoria HEAD 24/09/2026).
-  const [conversations, selected] = await Promise.all([
-    listConversations(admin, auth.workspace.id, { socialAccountId: channelId }),
-    Promise.resolve(selectedPreliminary),
+  const selected = selectedPreliminary;
+
+  // Antes da lista e da timeline: a conversa aberta já vem sem o marcador, e
+  // o que for zerado aqui já está na timeline carregada logo abaixo.
+  if (selected) await markConversationRead(admin, selected.id, auth.workspace.id);
+
+  const [{ conversations, hasMore }, unreadTotal] = await Promise.all([
+    listConversations(admin, auth.workspace.id, { socialAccountId: channelId, unreadOnly: filter === "unread", page }),
+    countUnreadConversations(admin, auth.workspace.id, { socialAccountId: channelId }),
   ]);
 
   let timeline: Awaited<ReturnType<typeof loadConversationTimeline>>["timeline"] = [];
@@ -87,11 +97,9 @@ export default async function InboxPage({
   let tags: string[] = [];
 
   if (selected) {
-    // Marcar como lida, buscar timeline, contato e tags — as 4 operações só
-    // dependem de `selected` (já resolvido acima), nenhuma depende do
+    // Timeline, contato e tags só dependem de `selected`, nenhuma depende do
     // resultado das outras. Paraleliza (reauditoria HEAD 24/09/2026).
-    const [, timelineResult, { data: contactRow }, { data: contactTags }] = await Promise.all([
-      admin.from("conversations").update({ last_read_at: new Date().toISOString() }).eq("id", selected.id),
+    const [timelineResult, { data: contactRow }, { data: contactTags }] = await Promise.all([
       loadConversationTimeline(admin, {
         conversationId: selected.id,
         contactId: selected.contact_id,
@@ -118,16 +126,24 @@ export default async function InboxPage({
   const lastEntry = timeline[timeline.length - 1];
   const context = <ContactContext contact={contact} receivedBy={selected?.socialAccountUsername ?? null} tags={tags} automationRuns={automationRuns} />;
   // Volta pra lista sem perder o channel ativo.
-  const backHref = buildHref("/dashboard/inbox", channelId ? { channel: channelId } : {});
+  const backHref = buildInboxHref({ channelId, filter, page });
 
   return (
     <>
       <PageHeader title="Caixa de entrada" description="Conversas com quem comentou ou mandou mensagem." />
 
       <div className="grid h-[calc(100dvh-14rem)] min-h-[28rem] md:h-[calc(100dvh-8.75rem)] grid-cols-1 overflow-hidden border-t border-border-subtle md:grid-cols-[300px_minmax(0,1fr)] lg:grid-cols-[300px_minmax(0,1fr)_300px] 2xl:grid-cols-[340px_minmax(0,1fr)_340px]">
-        {/* Coluna 1 — lista de conversas */}
-        <div className={`min-h-0 flex-col overflow-y-auto border-border-subtle md:flex md:border-r ${conversationId ? "hidden" : "flex"}`}>
-          <ConversationList conversations={conversations} selectedId={selected?.id} channelId={channelId} />
+        {/* Coluna 1 — lista de conversas. A key zera a rolagem ao trocar de página, filtro ou canal, mas não ao abrir uma conversa. */}
+        <div key={`${channelId}:${filter}:${page}`} className={`min-h-0 flex-col overflow-y-auto border-border-subtle md:flex md:border-r ${conversationId ? "hidden" : "flex"}`}>
+          <ConversationList
+            conversations={conversations}
+            selectedId={selected?.id}
+            channelId={channelId}
+            filter={filter}
+            page={page}
+            hasMore={hasMore}
+            unreadTotal={unreadTotal}
+          />
         </div>
 
         {/* Coluna 2 — thread da conversa */}
@@ -157,6 +173,7 @@ export default async function InboxPage({
 
               <div className="min-h-0 flex-1 overflow-y-auto">
                 <Timeline
+                  key={selected.id}
                   entries={timeline}
                   username={contact?.username ?? null}
                   lastKey={`${selected.id}:${lastEntry?.id ?? "empty"}:${timeline.length}`}
@@ -164,7 +181,8 @@ export default async function InboxPage({
               </div>
 
               <div className="shrink-0">
-                <MessageComposer conversationId={selected.id} socialAccountUsername={selected.socialAccountUsername} />
+                {/* A key descarta o rascunho ao trocar de conversa: ele nunca pode ir para outra pessoa. */}
+                <MessageComposer key={selected.id} conversationId={selected.id} socialAccountUsername={selected.socialAccountUsername} />
 
                 {/* Contexto em mobile/tablet — disclosure simples via <details>, sem JS extra. Em lg+ vira a 3ª coluna fixa. */}
                 <details className="border-t border-border-subtle lg:hidden">

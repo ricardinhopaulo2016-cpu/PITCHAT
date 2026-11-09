@@ -36,7 +36,8 @@ export class MetaApiError extends Error {
   }
 }
 
-export type SendMessageResult = { externalMessageId: string | null };
+export type PrivateReplyFormat = "text" | "button_template" | "quick_replies";
+export type SendMessageResult = { externalMessageId: string | null; format?: PrivateReplyFormat };
 
 /**
  * Botão do Button Template (docs/PITCHAT_META_INTEGRATION.md §5, confirmado
@@ -218,15 +219,15 @@ export const realMetaClient: MetaClient = {
   },
 
   async sendPrivateReply({ accessToken, igUserId, commentId, text, quickReplies }) {
-    const send = async (message: Record<string, unknown>) => {
+    const send = async (message: Record<string, unknown>, format: PrivateReplyFormat) => {
       const result = await callGraphApi(`/${igUserId}/messages`, accessToken, {
         recipient: { comment_id: commentId },
         message,
       });
-      return { externalMessageId: (result.message_id as string) ?? null };
+      return { externalMessageId: (result.message_id as string) ?? null, format };
     };
 
-    if (!quickReplies || quickReplies.length === 0) return send({ text });
+    if (!quickReplies || quickReplies.length === 0) return send({ text }, "text");
 
     const asQuickReplies = {
       text,
@@ -241,7 +242,7 @@ export const realMetaClient: MetaClient = {
       quickReplies.length <= BUTTON_TEMPLATE_MAX_BUTTONS &&
       quickReplies.every((q) => q.title.length <= BUTTON_TITLE_MAX_CHARS) &&
       text.length <= BUTTON_TEMPLATE_MAX_TEXT;
-    if (!fitsButtonTemplate) return send(asQuickReplies);
+    if (!fitsButtonTemplate) return send(asQuickReplies, "quick_replies");
 
     // Quick reply só aparece no app do celular (docs/PITCHAT_META_INTEGRATION.md).
     // O Button Template com postback é botão de verdade e o toque volta pelo
@@ -261,10 +262,10 @@ export const realMetaClient: MetaClient = {
             })),
           },
         },
-      });
+      }, "button_template");
     } catch (err) {
       if (err instanceof MetaApiError && err.kind === "NON_RETRYABLE" && err.code !== AUTH_ERROR_CODE) {
-        return send(asQuickReplies);
+        return send(asQuickReplies, "quick_replies");
       }
       throw err;
     }

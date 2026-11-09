@@ -55,7 +55,7 @@ O PITCHAT terá **Meta App próprio** — não reutilizar app de outro projeto (
 6. Configure o **Webhook** do produto Instagram (dentro do mesmo assistente "API setup with Instagram login", seção de Webhooks, ou em **App Dashboard → Webhooks → Instagram**):
    - **Callback URL**: `https://<seu-domínio>/api/webhooks/meta`
    - **Verify token**: você escolhe uma string aleatória própria → vai em `META_WEBHOOK_VERIFY_TOKEN` no `.env` (precisa ser idêntica dos dois lados — o `GET` do nosso endpoint já valida isso, ver §3)
-   - **Subscribed fields** mínimos para o MVP: `comments`, `messages`, `messaging_postbacks`. `message_reactions` é opcional no V1.
+   - **Subscribed fields** obrigatórios: `comments`, `messages`, `messaging_postbacks`, `messaging_seen` (marcar também no painel; ver §3, "Leitura"). `message_reactions` é opcional no V1.
 7. Solicite as **permissions** (nomes confirmados em duas páginas oficiais distintas — os nomes antigos sem `_business_` foram descontinuados em 27/01/2025; **confirme o texto exato mostrado na tela do seu App Dashboard antes de copiar pro `.env`**, porque uma terceira fonte consultada grafou uma delas de forma ligeiramente diferente — ver ressalva abaixo):
    - `instagram_business_basic`
    - `instagram_business_manage_messages`
@@ -127,8 +127,8 @@ Fonte: comportamento real da Graph API, reproduzido e confirmado nesta sessão (
 - **Assinatura**: header `X-Hub-Signature-256` = `sha256=` + HMAC-SHA256(payload bruto, App Secret). No PITCHAT é **obrigatório** rejeitar payload sem assinatura válida (já implementado, `lib/meta/signature.ts`).
 
   ⚠️ **Achado real (24/09/2026) — o App Secret certo aqui é o `INSTAGRAM_APP_SECRET`, NÃO o `META_APP_SECRET`.** Contradiz o que este documento afirmava antes (e o que a doc oficial não deixa explícito): pro produto "Instagram API with Instagram Login", a Meta assina o webhook com o secret do **Instagram App** (o mesmo usado no OAuth, `INSTAGRAM_APP_ID`/`INSTAGRAM_APP_SECRET` — ver §2), não com o Meta App Secret "principal" (`META_APP_SECRET`, App settings → Basic). Confirmado byte a byte: comparando `HMAC-SHA256(rawBody, cada um dos dois secrets)` contra o `X-Hub-Signature-256` de entregas reais, só `INSTAGRAM_APP_SECRET` bateu — `META_APP_SECRET` nunca validou nenhuma entrega desde o início do projeto. Implementado em `app/api/webhooks/meta/route.ts` (`webhookSigningSecret = process.env.INSTAGRAM_APP_SECRET`). `META_APP_SECRET` continua existindo só pro que já era dele antes (subscriptions/configuração a nível de App Dashboard, §1) — nunca mais usar pra verificar assinatura de webhook.
-- **Subscribe via API** (alternativa a configurar manualmente no dashboard): `POST /me/subscribed_apps?subscribed_fields=comments,messages,messaging_postbacks&access_token=<token da conta>`.
-- **Fields disponíveis** (Instagram): `comments`, `live_comments`, `mentions`, `messages`, `message_echoes`, `message_edit`, `message_reactions`, `messaging_handover`, `messaging_optins`, `messaging_policy_enforcement`, `messaging_postbacks`, `messaging_referral`, `messaging_seen`, `response_feedback`, `standby`, `story_insights`. **V1 usa**: `comments`, `messages`, `messaging_postbacks` (`message_reactions` opcional).
+- **Subscribe via API** (alternativa a configurar manualmente no dashboard): `POST /me/subscribed_apps?subscribed_fields=comments,messages,messaging_postbacks,messaging_seen&access_token=<token da conta>`.
+- **Fields disponíveis** (Instagram): `comments`, `live_comments`, `mentions`, `messages`, `message_echoes`, `message_edit`, `message_reactions`, `messaging_handover`, `messaging_optins`, `messaging_policy_enforcement`, `messaging_postbacks`, `messaging_referral`, `messaging_seen`, `response_feedback`, `standby`, `story_insights`. **V1 usa**: `comments`, `messages`, `messaging_postbacks`, `messaging_seen` (`message_reactions` opcional).
 
 Fontes: https://developers.facebook.com/docs/instagram-platform/webhooks , https://developers.facebook.com/docs/graph-api/webhooks/reference/instagram
 
@@ -175,6 +175,8 @@ Fontes: https://developers.facebook.com/docs/instagram-platform/webhooks , https
 }
 ```
 
+Dedupe do toque: esta doc não mostra `mid` em postback. `lib/meta/events.ts` usa `postback.mid` se vier e, sem ele, guarda em `messages.external_message_id` a chave `postback:<sender>:<timestamp>:<payload>`, que se repete no reenvio e muda em um novo toque. ⚠️ Confirmar no primeiro evento real se o `mid` existe.
+
 **Reação a mensagem** (`field: "message_reactions"`) — ⚠️ estrutura reconstruída de texto descritivo da doc, **não** de um JSON de exemplo literal. Tratar como aproximada, logar payload bruto e ajustar o parser após o primeiro evento real de teste:
 ```json
 {
@@ -187,6 +189,23 @@ Fontes: https://developers.facebook.com/docs/instagram-platform/webhooks , https
   }
 }
 ```
+
+**Leitura** (`field: "messaging_seen"`, a pessoa visualizou uma DM da conta) — ⚠️ **formato ainda não visto em produção** e sem exemplo oficial completo para "Instagram API with Instagram Login". A estrutura abaixo vem da doc de mensagens do Instagram: logar o payload bruto (fica em `webhook_events`) e ajustar o parser depois do primeiro evento real:
+```json
+{
+  "sender": { "id": "<IGSID de quem leu>" },
+  "recipient": { "id": "<IG account id>" },
+  "timestamp": 1234567890,
+  "read": { "mid": "<id da última mensagem lida>" }
+}
+```
+`lib/meta/events.ts` é tolerante: aceita `read.mid` e/ou `read.watermark`, em `entry.messaging[]`, em `entry.changes[]` com field `messaging_seen` ou em field/value direto no entry. Sem `sender.id`, ou sem `mid` e `watermark`, o evento é ignorado. Leitura nunca vira mensagem nem retoma run, e `mid` que não casa com uma DM enviada não marca nada.
+
+⚠️ **Watermark ainda sem confirmação de semântica no Instagram.** No caminho só com `read.watermark`, marca as DMs enviadas com `sent_at` até a watermark mais 5 segundos, porque `sent_at` é o relógio do nosso servidor, gravado depois da resposta da Meta. Confirmar no primeiro evento real e ajustar a folga se preciso (`WATERMARK_TOLERANCE_MS` em `lib/automation/messages.ts`).
+
+Para `messaging_seen` funcionar, são necessárias as **duas** coisas:
+1. O campo marcado no painel do app: **App Dashboard → Webhooks → Instagram** (ou API setup with Instagram login → Webhooks). A assinatura por conta não substitui isso.
+2. A conta assinada com o field. Conta conectada depois desta mudança já assina no OAuth. Conta conectada antes precisa do botão "Atualizar eventos das contas conectadas" em Contas (`POST /api/social-accounts/resubscribe-webhooks`), sem reconectar.
 
 Fonte de todos os payloads acima: https://developers.facebook.com/docs/graph-api/webhooks/reference/instagram
 

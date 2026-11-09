@@ -60,19 +60,19 @@ describe("listConversations — filtro por social_account_id acontece antes do L
   }
 
   it("sem channel: comportamento de sempre (top 50 globais, canal A fica de fora)", async () => {
-    const rows = await listConversations(seed() as never, "ws-1");
+    const { conversations: rows } = await listConversations(seed() as never, "ws-1");
     expect(rows).toHaveLength(50);
     expect(rows.some((r) => r.id.startsWith("a-"))).toBe(false);
   });
 
   it("com channel=A: as 2 conversas de A aparecem, mesmo sendo as mais antigas globalmente", async () => {
-    const rows = await listConversations(seed() as never, "ws-1", { socialAccountId: "sa-A" });
+    const { conversations: rows } = await listConversations(seed() as never, "ws-1", { socialAccountId: "sa-A" });
     expect(rows.map((r) => r.id).sort()).toEqual(["a-1", "a-2"]);
     expect(rows.every((r) => r.socialAccountUsername === "papagaio_milhas")).toBe(true);
   });
 
   it("com channel sem nenhuma conversa: retorna vazio, nunca cai pra 'todos'", async () => {
-    const rows = await listConversations(seed() as never, "ws-1", { socialAccountId: "sa-inexistente" });
+    const { conversations: rows } = await listConversations(seed() as never, "ws-1", { socialAccountId: "sa-inexistente" });
     expect(rows).toEqual([]);
   });
 });

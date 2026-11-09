@@ -117,29 +117,28 @@ export default async function HealthDashboardPage({
   // mostrado sem filtro de workspace, sinalizado na legenda.
   let webhookQuery = admin.from("webhook_events").select("id, event_type, status, received_at, last_error").gte("received_at", sinceIso);
   if (channel) webhookQuery = webhookQuery.eq("social_account_id", channel.id);
-  const { data: webhookEvents } = await webhookQuery.order("received_at", { ascending: false }).limit(500).returns<WebhookEventRow[]>();
 
   // Automation runs não carregam social_account_id direto — só dá pra
   // atribuir a um canal via conversations.social_account_id. Resolve os
   // conversation_id do canal ANTES do .limit() dos runs (nunca buscar os 500
   // mais recentes de todo o workspace e filtrar depois em JS — cortaria runs
   // reais do canal que não estivessem entre os 500 mais recentes globais).
-  let channelConversationIds: string[] | null = null;
-  if (channel) {
-    const { data: convs } = await admin
-      .from("conversations")
-      .select("id")
-      .eq("workspace_id", auth.workspace.id)
-      .eq("social_account_id", channel.id)
-      .limit(1000);
-    channelConversationIds = (convs ?? []).map((c) => c.id as string);
-  }
+  const loadAutomationRuns = async (): Promise<AutomationRunRow[]> => {
+    let channelConversationIds: string[] | null = null;
+    if (channel) {
+      const { data: convs } = await admin
+        .from("conversations")
+        .select("id")
+        .eq("workspace_id", auth.workspace.id)
+        .eq("social_account_id", channel.id)
+        .limit(1000);
+      channelConversationIds = (convs ?? []).map((c) => c.id as string);
+    }
 
-  // Canal ativo mas sem NENHUMA conversation ainda → não faz sentido nem
-  // rodar a query (o `.in()` com array vazio já devolveria vazio, mas evita
-  // o round-trip).
-  let automationRuns: AutomationRunRow[] = [];
-  if (!channelConversationIds || channelConversationIds.length > 0) {
+    // Canal ativo mas sem NENHUMA conversation ainda → não faz sentido nem
+    // rodar a query (o `.in()` com array vazio já devolveria vazio, mas evita
+    // o round-trip).
+    if (channelConversationIds && channelConversationIds.length === 0) return [];
     let runsQuery = admin
       .from("automation_runs")
       .select("id, status, waiting_reason, started_at, updated_at")
@@ -147,8 +146,8 @@ export default async function HealthDashboardPage({
       .gte("started_at", sinceIso);
     if (channelConversationIds) runsQuery = runsQuery.in("conversation_id", channelConversationIds);
     const { data } = await runsQuery.limit(500).returns<AutomationRunRow[]>();
-    automationRuns = data ?? [];
-  }
+    return data ?? [];
+  };
 
   let socialAccountsQuery = admin
     .from("social_accounts")
@@ -157,36 +156,41 @@ export default async function HealthDashboardPage({
     .eq("platform", "instagram")
     .neq("status", "revoked");
   if (channel) socialAccountsQuery = socialAccountsQuery.eq("id", channel.id);
-  const { data: socialAccounts } = await socialAccountsQuery.returns<SocialAccountRow[]>();
-
-  // `jobs` GLOBAL (bounded pela janela + workspace) — alimenta o painel
-  // "QStash / Jobs", que fica explicitamente rotulado como global quando um
-  // canal está selecionado (item 18E da Fase D1: não fingir atribuição que
-  // os dados atuais não sustentam).
-  const { data: jobs } = await admin
-    .from("jobs")
-    .select("id, type, status, payload, last_error, completed_at")
-    .eq("workspace_id", auth.workspace.id)
-    .gte("completed_at", sinceIso)
-    .limit(200)
-    .returns<JobRow[]>();
 
   // Token Maintenance É atribuível por canal (payload.socialAccountId) — só
   // aqui vale a pena uma query própria e bounded por conta, pra não perder
   // refresh de token daquele canal que ficasse fora do teto global de 200.
-  let tokenJobs = jobs ?? [];
-  if (channel) {
+  const loadChannelTokenJobs = async (channelAccountId: string): Promise<JobRow[]> => {
     const { data } = await admin
       .from("jobs")
       .select("id, type, status, payload, last_error, completed_at")
       .eq("workspace_id", auth.workspace.id)
       .eq("type", "refresh_meta_token")
-      .eq("payload->>socialAccountId", channel.id)
+      .eq("payload->>socialAccountId", channelAccountId)
       .order("completed_at", { ascending: false })
       .limit(50)
       .returns<JobRow[]>();
-    tokenJobs = data ?? [];
-  }
+    return data ?? [];
+  };
+
+  // Nenhuma depende da outra: paraleliza. `jobs` é GLOBAL (bounded pela janela
+  // + workspace) e alimenta o painel "QStash / Jobs", rotulado como global
+  // quando um canal está selecionado (item 18E da Fase D1).
+  const [{ data: webhookEvents }, automationRuns, { data: socialAccounts }, { data: jobs }, channelTokenJobs] = await Promise.all([
+    webhookQuery.order("received_at", { ascending: false }).limit(500).returns<WebhookEventRow[]>(),
+    loadAutomationRuns(),
+    socialAccountsQuery.returns<SocialAccountRow[]>(),
+    admin
+      .from("jobs")
+      .select("id, type, status, payload, last_error, completed_at")
+      .eq("workspace_id", auth.workspace.id)
+      .gte("completed_at", sinceIso)
+      .limit(200)
+      .returns<JobRow[]>(),
+    channel ? loadChannelTokenJobs(channel.id) : Promise.resolve(null),
+  ]);
+
+  const tokenJobs = channelTokenJobs ?? jobs ?? [];
 
   const runs = automationRuns;
   const retryWaitingRunIds = runs.filter((r) => r.status === "waiting" && r.waiting_reason === "retry").map((r) => r.id);

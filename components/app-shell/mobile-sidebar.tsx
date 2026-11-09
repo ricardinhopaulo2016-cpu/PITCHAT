@@ -6,10 +6,13 @@ import { useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Menu, X, Check } from "lucide-react";
 import { ChannelIcon, PitchatMark, PitchatWordmark } from "@/components/icons/pitchat";
-import { NAV_ITEMS } from "./nav-items";
+import { INBOX_HREF, NAV_ITEMS, inboxUnreadLabel } from "./nav-items";
+import { useInboxUnreadCount } from "./inbox-unread-provider";
+import { LiveStatus } from "./realtime-provider";
 import { LogoutButton } from "@/app/dashboard/logout-button";
 import { SoundToggle } from "@/components/ui/sound-toggle";
 import { AccountTile } from "@/components/ui/account-tile";
+import { UnreadBadge } from "@/components/ui/unread-badge";
 import type { ChannelAccount } from "@/lib/channel/repo";
 import { groupChannelAccountsByProfile } from "@/lib/channel/repo";
 import { buildChannelSwitchHref, withChannelQuery, CHANNEL_PARAM } from "@/lib/channel/url";
@@ -24,6 +27,7 @@ export function MobileSidebar({
   email: string;
   accounts: ChannelAccount[];
 }) {
+  const inboxUnreadCount = useInboxUnreadCount();
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -39,11 +43,14 @@ export function MobileSidebar({
           <PitchatMark className="h-5 w-5 text-signal" />
           <PitchatWordmark className="text-sm text-text" />
         </div>
-        <Dialog.Trigger asChild>
-          <button aria-label="Abrir menu" className="text-text-secondary">
-            <Menu className="h-5 w-5" />
-          </button>
-        </Dialog.Trigger>
+        <div className="flex items-center gap-3">
+          <LiveStatus />
+          <Dialog.Trigger asChild>
+            <button aria-label="Abrir menu" className="text-text-secondary">
+              <Menu className="h-5 w-5" />
+            </button>
+          </Dialog.Trigger>
+        </div>
       </div>
 
       <Dialog.Portal>
@@ -137,6 +144,7 @@ export function MobileSidebar({
                   {isActive && <span className="absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-full bg-signal" />}
                   <Icon className={`h-[18px] w-[18px] ${isActive ? "text-signal" : ""}`} />
                   {item.label}
+                  {item.href === INBOX_HREF && <UnreadBadge count={inboxUnreadCount} label={inboxUnreadLabel(inboxUnreadCount)} className="ml-auto" />}
                 </Link>
               );
             })}

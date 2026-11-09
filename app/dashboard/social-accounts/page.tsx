@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/app-shell/page-header";
 import { AccountTile } from "@/components/ui/account-tile";
 import { EmptyState } from "@/components/ui/empty-state";
 import { DisconnectButton } from "./disconnect-button";
+import { ResubscribeButton } from "./resubscribe-button";
 import { groupAccountsByProfile, listWorkspaceInstagramAccounts, type InstagramAccount } from "@/lib/social-accounts/repo";
 
 type ProfileRow = { id: string; name: string; slug: string };
@@ -185,6 +186,8 @@ export default async function SocialAccountsPage({
             })}
           </div>
         )}
+
+        {accounts.length > 0 && <ResubscribeButton />}
       </div>
     </>
   );

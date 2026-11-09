@@ -1,8 +1,9 @@
 import type { ReactNode } from "react";
+import { AlertCircle, Check, CheckCheck } from "lucide-react";
 import type { TimelineEntry } from "@/lib/inbox/repo";
 import { PublicReplyAction } from "./public-reply-action";
 import { ScrollToEnd } from "./scroll-to-end";
-import { dayKey, formatClock, formatDayLabel } from "@/lib/ui/format";
+import { dayKey, formatClock, formatDayLabel, formatDeliveryLabel, type DeliveryState } from "@/lib/ui/format";
 
 /**
  * `180949…41213` — achado real 24/09/2026: o mesmo contato pode comentar a
@@ -149,6 +150,20 @@ function MessageBlock({ entry, leadName, time }: { entry: TimelineEntry; leadNam
           <PublicReplyAction commentId={entry.commentId} />
         </div>
       )}
+
+      {entry.delivery && <DeliveryIndicator delivery={entry.delivery} />}
     </div>
+  );
+}
+
+/** Situação de uma DM enviada: sempre ícone e texto, nunca só cor. */
+function DeliveryIndicator({ delivery }: { delivery: DeliveryState }) {
+  const Icon = delivery.state === "seen" ? CheckCheck : delivery.state === "failed" ? AlertCircle : Check;
+  const color = delivery.state === "failed" ? "text-danger" : delivery.state === "seen" ? "text-signal" : "text-text-muted";
+  return (
+    <p className={`mt-1 flex items-center justify-end gap-1 text-xs ${color}`}>
+      <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+      {formatDeliveryLabel(delivery)}
+    </p>
   );
 }

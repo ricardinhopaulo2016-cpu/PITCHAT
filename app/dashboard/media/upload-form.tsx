@@ -90,7 +90,7 @@ export function MediaUploadForm({ onUploaded }: { onUploaded?: (mediaAssetId: st
   }
 
   return (
-    <div>
+    <div {...(state.phase === "uploading" || state.phase === "processing" ? { "data-realtime-hold": "" } : {})}>
       <input
         ref={inputRef}
         type="file"

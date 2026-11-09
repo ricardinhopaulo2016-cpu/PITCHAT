@@ -62,6 +62,7 @@ export function PublicReplyAction({ commentId }: { commentId: string }) {
       <Textarea
         rows={2}
         aria-label="Resposta pública ao comentário"
+        data-inbox-draft
         autoFocus
         value={text}
         placeholder="Resposta pública a este comentário…"

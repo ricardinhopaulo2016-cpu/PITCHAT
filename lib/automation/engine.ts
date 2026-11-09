@@ -257,6 +257,7 @@ export async function advanceRun(
               type: hasQuickReply ? "quick_reply" : "text",
               text: outcome.text,
               origin: "automation",
+              ...(hasQuickReply ? { payload: { options: outcome.quickReplyOptions, deliveredAs: result.format ?? null } } : {}),
             });
           }
           if (hasQuickReply) {

@@ -1,9 +1,14 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MetaClient } from "@/lib/meta/client";
 import { decryptToken } from "@/lib/meta/token-crypto";
-import type { InstagramCommentReceived, InstagramMessageReceived, InstagramQuickReplyReceived } from "@/lib/meta/events";
+import type {
+  InstagramCommentReceived,
+  InstagramMessageReceived,
+  InstagramMessageSeen,
+  InstagramQuickReplyReceived,
+} from "@/lib/meta/events";
 import { advanceRun, claimWaitingRun, parseQuickReplyPayload, type SocialAccountForEngine } from "./engine";
-import { recordInboundMessage } from "./messages";
+import { markOutboundMessagesRead, recordInboundMessage, registerInboundActivity } from "./messages";
 import { nextNode, resumeTargetId, type Graph } from "./graph";
 import { evaluateNode, type ExecutionContext } from "./node-handlers";
 
@@ -108,6 +113,17 @@ export async function ingestInstagramComment(
 
   const conversation = await upsertConversation(admin, socialAccount.workspace_id, socialAccount.id, contact.id);
 
+  // Só no primeiro insert: reenvio do webhook e retry do worker chegam aqui
+  // com insertedComment nulo e não contam de novo. Antes do portão de human
+  // takeover porque conversa em operação manual também sobe e marca não lida.
+  if (insertedComment) {
+    await registerInboundActivity(admin, {
+      workspaceId: socialAccount.workspace_id,
+      conversationId: conversation.id,
+      at: new Date().toISOString(),
+    });
+  }
+
   // Human takeover (achado real 24/09/2026): antes disso, automation_enabled
   // só era consultado DENTRO de um CONDITION node opcional — uma automação
   // sem esse node ignorava completamente que um humano assumiu a conversa.
@@ -180,15 +196,24 @@ export async function ingestInstagramQuickReply(
   }
 
   const parsed = parseQuickReplyPayload(event.payload);
-  if (!parsed) return { processed: false, reason: "PAYLOAD_NAO_RECONHECIDO" };
+  if (!parsed) {
+    await recordTapWithoutRun(admin, socialAccount, event);
+    return { processed: false, reason: "PAYLOAD_NAO_RECONHECIDO" };
+  }
 
   const run = await claimWaitingRun(admin, parsed.runId, "quick_reply");
-  if (!run) return { processed: false, reason: "RUN_JA_RETOMADO_OU_NAO_ENCONTRADO" }; // idempotência: outro webhook já pegou
+  if (!run) {
+    // Idempotência: a run não avança. O toque continua sendo da pessoa, por
+    // exemplo no mesmo botão depois de a run ter terminado.
+    await recordTapWithoutRun(admin, socialAccount, event);
+    return { processed: false, reason: "RUN_JA_RETOMADO_OU_NAO_ENCONTRADO" };
+  }
 
   // O clique é real independente do que a gente decidir fazer com ele —
   // grava sempre, mesmo se a automação estiver pausada por human takeover
   // (ver checagem logo abaixo). `run.conversation_id` já vem da própria
-  // claimWaitingRun (select() sem args traz todas as colunas).
+  // claimWaitingRun (select() sem args traz todas as colunas). Falha ao gravar
+  // não relança aqui: esta parte fica fora do try e a run ficaria presa em running.
   if (run.conversation_id) {
     await recordInboundMessage(admin, {
       workspaceId: run.workspace_id,
@@ -315,7 +340,7 @@ export async function ingestInstagramMessage(
   const contact = await upsertContact(admin, socialAccount.workspace_id, event.fromUserId, null);
   const conversation = await upsertConversation(admin, socialAccount.workspace_id, socialAccount.id, contact.id);
 
-  await recordInboundMessage(admin, {
+  const { inserted, failure } = await recordInboundMessage(admin, {
     workspaceId: socialAccount.workspace_id,
     conversationId: conversation.id,
     externalMessageId: event.externalMessageId,
@@ -323,7 +348,102 @@ export async function ingestInstagramMessage(
     text: event.text,
   });
 
-  return { processed: true };
+  // A rota ignora o retorno e marcaria o evento como processado, perdendo a
+  // DM. Relançar é seguro: o dedupe por mid cobre a repetição do QStash.
+  if (failure) throw new Error(`Falha ao gravar DM recebida: ${failure}`);
+
+  return inserted ? { processed: true } : { processed: false, reason: "DUPLICATE_MESSAGE_IGNORED" };
+}
+
+/**
+ * A pessoa visualizou uma DM. Só atualiza `read_at` em mensagem enviada: nunca
+ * cria contato ou conversa, nunca grava mensagem e nunca retoma run.
+ *
+ * Nunca lança: a confirmação é informativa, e erro aqui faria o QStash repetir
+ * o payload inteiro. A próxima leitura da pessoa cobre o que ficar para trás,
+ * porque ela marca também todas as enviadas anteriores.
+ */
+export async function ingestInstagramMessageSeen(
+  admin: SupabaseClient,
+  socialAccount: SocialAccountRow,
+  event: InstagramMessageSeen
+): Promise<{ processed: boolean; reason?: string }> {
+  if (event.fromUserId === socialAccount.external_account_id) {
+    return { processed: false, reason: "IGNORED_OWN_READ" };
+  }
+
+  try {
+    const lookup = await findExistingConversation(admin, socialAccount, event.fromUserId);
+    if ("reason" in lookup) return { processed: false, reason: lookup.reason };
+
+    const result = await markOutboundMessagesRead(admin, {
+      workspaceId: socialAccount.workspace_id,
+      conversationId: lookup.conversationId,
+      externalMessageId: event.externalMessageId,
+      watermarkAt: event.watermarkAt,
+      readAt: event.timestamp,
+    });
+    return result === "marked" ? { processed: true } : { processed: false, reason: result.toUpperCase() };
+  } catch (err) {
+    console.error("[inbox] falha ao processar leitura:", err instanceof Error ? err.message : String(err));
+    return { processed: false, reason: "READ_RECEIPT_FAILED" };
+  }
+}
+
+/** Acha a conversa da pessoa nesta conta sem criar nada. Lança em erro do banco, para não confundir falha com "não existe". */
+async function findExistingConversation(
+  admin: SupabaseClient,
+  socialAccount: SocialAccountRow,
+  platformUserId: string
+): Promise<{ conversationId: string } | { reason: "CONTACT_NOT_FOUND" | "CONVERSATION_NOT_FOUND" }> {
+  const { data: contact, error: contactError } = await admin
+    .from("contacts")
+    .select("id")
+    .eq("workspace_id", socialAccount.workspace_id)
+    .eq("platform", "instagram")
+    .eq("platform_user_id", platformUserId)
+    .maybeSingle();
+  if (contactError) throw new Error(`Falha ao buscar contato: ${contactError.message}`);
+  if (!contact) return { reason: "CONTACT_NOT_FOUND" };
+
+  const { data: conversation, error: conversationError } = await admin
+    .from("conversations")
+    .select("id")
+    .eq("workspace_id", socialAccount.workspace_id)
+    .eq("social_account_id", socialAccount.id)
+    .eq("contact_id", contact.id)
+    .maybeSingle();
+  if (conversationError) throw new Error(`Falha ao buscar conversa: ${conversationError.message}`);
+  if (!conversation) return { reason: "CONVERSATION_NOT_FOUND" };
+
+  return { conversationId: conversation.id as string };
+}
+
+/**
+ * Toque que não retoma run nenhuma: grava e conta como não lida, sem criar
+ * contato nem conversa. Sem chave estável não grava, porque o reenvio contaria
+ * em dobro. Aqui nenhuma run foi reivindicada, então relançar para o QStash
+ * repetir é seguro.
+ */
+async function recordTapWithoutRun(
+  admin: SupabaseClient,
+  socialAccount: SocialAccountRow,
+  event: InstagramQuickReplyReceived
+): Promise<void> {
+  if (!event.externalMessageId || event.fromUserId === socialAccount.external_account_id) return;
+
+  const lookup = await findExistingConversation(admin, socialAccount, event.fromUserId);
+  if ("reason" in lookup) return;
+
+  const { failure } = await recordInboundMessage(admin, {
+    workspaceId: socialAccount.workspace_id,
+    conversationId: lookup.conversationId,
+    externalMessageId: event.externalMessageId,
+    type: "quick_reply",
+    text: event.buttonTitle,
+    payload: { payload: event.payload },
+  });
+  if (failure) throw new Error(`Falha ao gravar toque em botão: ${failure}`);
 }
 
 async function upsertContact(
@@ -342,7 +462,11 @@ async function upsertContact(
     .maybeSingle();
 
   if (existing) {
-    await admin.from("contacts").update({ last_seen_at: now, username }).eq("id", existing.id);
+    // Evento de DM não traz username: gravar null apagaria o @ já conhecido.
+    await admin
+      .from("contacts")
+      .update({ last_seen_at: now, ...(username ? { username } : {}) })
+      .eq("id", existing.id);
     return existing;
   }
 

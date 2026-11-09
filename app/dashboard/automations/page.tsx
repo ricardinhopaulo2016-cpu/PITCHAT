@@ -59,12 +59,23 @@ export default async function AutomationsPage({ searchParams }: { searchParams: 
     const { count } = await query;
     return count ?? 0;
   };
-  const stats = await Promise.all(
-    (automations ?? []).map(async (a) => {
-      const [total, errors] = await Promise.all([countRuns(a.id, false), countRuns(a.id, true)]);
-      return [a.id, { total, errors }] as const;
-    })
-  );
+  // Uma consulta agrupada. Sem a migration, cai nas contagens por automação.
+  const { data: groupedStats, error: groupedStatsError } = await admin.rpc("automation_run_stats", {
+    p_workspace_id: auth.workspace.id,
+    p_start: rangeIso?.start ?? null,
+    p_end: rangeIso?.end ?? null,
+  });
+  const stats: (readonly [string, RunStat])[] = !groupedStatsError && groupedStats
+    ? (groupedStats as { automation_id: string; total: number | string; errors: number | string }[]).map((row) => [
+        row.automation_id,
+        { total: Number(row.total), errors: Number(row.errors) },
+      ] as const)
+    : await Promise.all(
+        (automations ?? []).map(async (a) => {
+          const [total, errors] = await Promise.all([countRuns(a.id, false), countRuns(a.id, true)]);
+          return [a.id, { total, errors }] as const;
+        })
+      );
   const runStats = new Map<string, RunStat>(stats);
   const statOf = (id: string): RunStat => runStats.get(id) ?? { total: 0, errors: 0 };
 

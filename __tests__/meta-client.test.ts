@@ -99,7 +99,12 @@ describe("realMetaClient.sendPrivateReply", () => {
     const result = await realMetaClient.sendPrivateReply(params);
 
     expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual(asQuickReplies);
-    expect(result.externalMessageId).toBe("m3");
+    expect(result).toEqual({ externalMessageId: "m3", format: "quick_replies" });
+  });
+
+  it("informa qual formato a Meta aceitou", async () => {
+    vi.stubGlobal("fetch", fetchReturning({ message_id: "m5" }));
+    await expect(realMetaClient.sendPrivateReply(params)).resolves.toEqual({ externalMessageId: "m5", format: "button_template" });
   });
 
   it.each([

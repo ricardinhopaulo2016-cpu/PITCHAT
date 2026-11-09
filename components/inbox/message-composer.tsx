@@ -55,6 +55,7 @@ export function MessageComposer({
       <Textarea
         rows={2}
         aria-label="Mensagem manual"
+        data-inbox-draft
         value={text}
         placeholder="Mensagem manual…"
         onChange={(e) => setText(e.target.value)}

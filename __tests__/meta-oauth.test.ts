@@ -133,7 +133,7 @@ describe("subscribeAccountToWebhooks", () => {
     const [urlArg, options] = fetchMock.mock.calls[0];
     const url = new URL(urlArg);
     expect(url.pathname).toContain("/17841400000000000/subscribed_apps");
-    expect(url.searchParams.get("subscribed_fields")).toBe("comments,messages,messaging_postbacks");
+    expect(url.searchParams.get("subscribed_fields")).toBe("comments,messages,messaging_postbacks,messaging_seen");
     expect(url.searchParams.get("access_token")).toBe("token-abc");
     expect(options.method).toBe("POST");
   });

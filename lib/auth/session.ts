@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { getCurrentWorkspace, type Workspace } from "@/lib/workspace";
 
@@ -12,8 +13,12 @@ export type AuthContext = {
  * Route Handler que mexe em dado de domínio. Retorna null em qualquer
  * situação que devia virar 401/403 — nunca lança, pra não vazar stack trace
  * pro cliente; quem chama decide o status code.
+ *
+ * Layout e página chamam na mesma renderização: o `cache` faz uma validação
+ * por request em vez de repetir duas idas à rede. Vale só dentro do render, e
+ * cada request valida a sessão de novo.
  */
-export async function getAuthContext(): Promise<AuthContext | null> {
+export const getAuthContext = cache(async (): Promise<AuthContext | null> => {
   const supabase = await getSupabaseServerClient();
   if (!supabase) return null;
 
@@ -26,4 +31,4 @@ export async function getAuthContext(): Promise<AuthContext | null> {
   if (!workspace) return null;
 
   return { userId: user.id, email: user.email ?? null, workspace };
-}
+});

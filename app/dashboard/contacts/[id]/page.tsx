@@ -116,6 +116,7 @@ export default async function ContactDetailPage({
               <li key={c.id}>
                 <Link
                   href={`/dashboard/inbox?channel=${c.socialAccountId}&conversation=${c.id}`}
+                  prefetch={false} // abrir a conversa marca como lida: só no clique, nunca em prefetch
                   className="group flex items-center justify-between gap-3 px-2 py-3 transition-colors duration-[var(--motion-fast)] hover:bg-surface-1"
                 >
                   <span className="min-w-0">

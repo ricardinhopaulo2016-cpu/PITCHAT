@@ -33,6 +33,7 @@ export function buildHref(pathname: string, params: ParamsInput): string {
 export function buildChannelSwitchHref(pathname: string, current: ParamsInput, channelId: string | null): string {
   const sp = toSearchParams(current);
   sp.delete("conversation");
+  sp.delete("page"); // a página da lista de um canal não existe necessariamente no outro
   if (channelId) sp.set(CHANNEL_PARAM, channelId);
   else sp.delete(CHANNEL_PARAM);
   return buildHref(pathname, sp);
