@@ -133,6 +133,10 @@ export function classifyMetaError(httpStatus: number, errorCode?: number): MetaA
 
 const GRAPH_BASE_URL = "https://graph.instagram.com";
 
+const BUTTON_TEMPLATE_MAX_BUTTONS = 3;
+const BUTTON_TEMPLATE_MAX_TEXT = 640;
+const BUTTON_TITLE_MAX_CHARS = 20;
+
 async function callGraphApi(
   path: string,
   accessToken: string,
@@ -214,25 +218,56 @@ export const realMetaClient: MetaClient = {
   },
 
   async sendPrivateReply({ accessToken, igUserId, commentId, text, quickReplies }) {
-    const message: Record<string, unknown> = { text };
-    // A doc oficial de Private Reply só mostra exemplo com `text` — nunca
-    // confirmado nem negado explicitamente que `quick_replies` funciona
-    // junto (ver achado real 24/09/2026, comentário em
-    // lib/automation/engine.ts). Anexa quando pedido; se a Meta rejeitar,
-    // o erro real fica capturado em automation_run_steps.error — decide-se
-    // a partir daí, nunca de suposição.
-    if (quickReplies && quickReplies.length > 0) {
-      message.quick_replies = quickReplies.map((q) => ({
+    const send = async (message: Record<string, unknown>) => {
+      const result = await callGraphApi(`/${igUserId}/messages`, accessToken, {
+        recipient: { comment_id: commentId },
+        message,
+      });
+      return { externalMessageId: (result.message_id as string) ?? null };
+    };
+
+    if (!quickReplies || quickReplies.length === 0) return send({ text });
+
+    const asQuickReplies = {
+      text,
+      quick_replies: quickReplies.map((q) => ({
         content_type: "text",
         title: q.title,
         payload: q.payload,
-      }));
+      })),
+    };
+
+    const fitsButtonTemplate =
+      quickReplies.length <= BUTTON_TEMPLATE_MAX_BUTTONS &&
+      quickReplies.every((q) => q.title.length <= BUTTON_TITLE_MAX_CHARS) &&
+      text.length <= BUTTON_TEMPLATE_MAX_TEXT;
+    if (!fitsButtonTemplate) return send(asQuickReplies);
+
+    // Quick reply só aparece no app do celular (docs/PITCHAT_META_INTEGRATION.md).
+    // O Button Template com postback é botão de verdade e o toque volta pelo
+    // mesmo webhook. A doc de Private Reply só mostra `text`: se a Meta recusar
+    // o template, a resposta privada não foi consumida e cai no formato anterior.
+    try {
+      return await send({
+        attachment: {
+          type: "template",
+          payload: {
+            template_type: "button",
+            text,
+            buttons: quickReplies.map((q) => ({
+              type: "postback",
+              title: q.title,
+              payload: q.payload,
+            })),
+          },
+        },
+      });
+    } catch (err) {
+      if (err instanceof MetaApiError && err.kind === "NON_RETRYABLE" && err.code !== AUTH_ERROR_CODE) {
+        return send(asQuickReplies);
+      }
+      throw err;
     }
-    const result = await callGraphApi(`/${igUserId}/messages`, accessToken, {
-      recipient: { comment_id: commentId },
-      message,
-    });
-    return { externalMessageId: (result.message_id as string) ?? null };
   },
 
   async sendTextMessage({ accessToken, igUserId, recipientId, text }) {
