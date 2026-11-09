@@ -1,8 +1,9 @@
+import { ChevronDown } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { SignalMarker } from "@/components/icons/pitchat";
 import { SectionPanel, Stat } from "@/components/ui/section-panel";
-import { GOAL_PER_POST, GOAL_PHRASE, NO_BASE_LABEL, VIRAL_SIGNAL_MULTIPLIER } from "@/lib/metrics/constants";
+import { GOAL_PER_POST, NO_BASE_LABEL, VIRAL_SIGNAL_MULTIPLIER } from "@/lib/metrics/constants";
 import { buildDailySeries, failureCount, isObservedBy, observedCount, readCombinedWindow, windowDelta, type EventKind, type RawDaily, type SourceKey, type Sources, type WindowReading } from "@/lib/metrics/daily";
 import {
   buildIncidents,
@@ -15,8 +16,8 @@ import {
   type RawFailures,
   type RawRunIncident,
 } from "@/lib/metrics/failures";
-import { bucketTotal, buildQueueState, findPeak, formatPeakHour, hourOfDayProfile, sumBuckets, type FlowBucket, type RawFlow } from "@/lib/metrics/flow";
-import { buildFunnel, sumFunnel, type FunnelCounts, type FunnelStage, type RawFunnel } from "@/lib/metrics/funnel";
+import { buildQueueState, findPeak, formatPeakHour, sumBuckets, type FlowBucket, type RawFlow } from "@/lib/metrics/flow";
+import { buildFunnel, type FunnelCounts, type RawFunnel } from "@/lib/metrics/funnel";
 import type { Insight } from "@/lib/metrics/insights";
 import type { ComparisonWindow, MetricsPeriod, WindowKey } from "@/lib/metrics/period";
 import { displayName, formatCount, formatDelta, formatRate, rate } from "@/lib/metrics/rates";
@@ -27,7 +28,7 @@ import { buildGoalPosts, buildViralAccounts, type RawViral } from "@/lib/metrics
 import { todayKey } from "@/lib/ui/date-range";
 import { formatDateTime, formatLastActivity } from "@/lib/ui/format";
 
-type Names = Map<string, string>;
+export type Names = Map<string, string>;
 
 const GATE_MESSAGE: Record<RpcFailure, string> = {
   missing: "Aguardando a atualização do banco para mostrar este bloco.",
@@ -38,31 +39,47 @@ const GATE_MESSAGE: Record<RpcFailure, string> = {
 /** Para blocos que não dependem do período: trocar o filtro não adiantaria. */
 const TIMEOUT_RETRY = "A consulta demorou demais. Tente de novo em instantes.";
 
-function BlockGate<T>({ result, timeoutMessage, children }: { result: RpcResult<T>; timeoutMessage?: string; children: (data: T) => ReactNode }) {
+export function BlockGate<T>({ result, timeoutMessage, children }: { result: RpcResult<T>; timeoutMessage?: string; children: (data: T) => ReactNode }) {
   if (result.status === "ok") return <>{children(result.data)}</>;
   const message = result.status === "timeout" && timeoutMessage ? timeoutMessage : GATE_MESSAGE[result.status];
   return <p className="px-5 py-4 text-sm text-text-muted">{message}</p>;
 }
 
-function accountLabel(id: string | null, names: Names): string {
+export function accountLabel(id: string | null, names: Names): string {
   if (!id) return "sem perfil vinculado";
   return names.get(id) ?? "conta removida";
 }
 
-function plural(n: number, one: string, many: string): string {
+export function plural(n: number, one: string, many: string): string {
   return `${formatCount(n)} ${n === 1 ? one : many}`;
 }
 
-function shortDay(day: string): string {
+export function shortDay(day: string): string {
   return `${day.slice(8)}/${day.slice(5, 7)}`;
 }
 
-function PanelNote({ children }: { children: ReactNode }) {
+export function PanelNote({ children }: { children: ReactNode }) {
   return <p className="border-t border-border-subtle px-5 py-3 text-xs text-text-muted">{children}</p>;
 }
 
-function Empty({ children }: { children: ReactNode }) {
+export function Empty({ children }: { children: ReactNode }) {
   return <p className="px-5 py-4 text-sm text-text-muted">{children}</p>;
+}
+
+/** Detalhe secundário: fica recolhido e abre por clique ou por link com âncora. */
+function DetailPanel({ id, title, caption, children }: { id: string; title: string; caption?: string; children: ReactNode }) {
+  return (
+    <details id={id} className="group overflow-hidden rounded-[var(--radius-panel-lg)] border border-border-subtle bg-surface-1">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-3 transition-colors duration-[var(--motion-fast)] hover:bg-surface-2 [&::-webkit-details-marker]:hidden">
+        <span className="min-w-0">
+          <span className="block text-base font-semibold text-text">{title}</span>
+          {caption && <span className="mt-0.5 block text-xs text-text-muted">{caption}</span>}
+        </span>
+        <ChevronDown aria-hidden="true" className="h-[18px] w-[18px] shrink-0 text-text-muted transition-transform duration-[var(--motion-ui)] group-open:rotate-180" />
+      </summary>
+      <div className="border-t border-border-subtle">{children}</div>
+    </details>
+  );
 }
 
 function SubHeading({ children }: { children: ReactNode }) {
@@ -208,7 +225,7 @@ const SOURCE_LABELS: { key: SourceKey; label: string }[] = [
 
 export function ConfidenceSection({ result, period }: { result: RpcResult<RawConfidence>; period: MetricsPeriod }) {
   return (
-    <SectionPanel id="confianca" title="Confiança dos dados" caption={`Recorte ${period.label}. Comentários novos usam o horário real do Instagram; os antigos, a hora de gravação no PITCHAT.`}>
+    <DetailPanel id="confianca" title="Confiança dos dados" caption={`Avisos do recorte ${period.label}. Comentários novos usam o horário real do Instagram; os antigos, a hora de gravação no PITCHAT.`}>
       <BlockGate result={result}>
         {(data) => (
           <>
@@ -223,7 +240,7 @@ export function ConfidenceSection({ result, period }: { result: RpcResult<RawCon
               <Stat label="Execuções sem comentário" value={formatCount(data.runs_comment_not_found)} />
               <Stat label="Execuções de automações inativas" value={formatCount(data.runs_inactive_automation)} />
             </div>
-            <SubHeading>Última atividade por fonte</SubHeading>
+            <SubHeading>Última atividade por fonte, sem depender do período</SubHeading>
             <ul className="divide-y divide-border-subtle border-t border-border-subtle">
               {SOURCE_LABELS.map(({ key, label }) => {
                 const last = data.sources[key].last;
@@ -234,7 +251,7 @@ export function ConfidenceSection({ result, period }: { result: RpcResult<RawCon
           </>
         )}
       </BlockGate>
-    </SectionPanel>
+    </DetailPanel>
   );
 }
 
@@ -270,9 +287,16 @@ export function InsightsSection({ insights, healthHref }: { insights: Insight[] 
                     {href && (
                       <>
                         {" "}
-                        <Link href={href} className="underline hover:text-text">
-                          Abrir
-                        </Link>
+                        {href.startsWith("#") ? (
+                          // Âncora nativa: dispara o hashchange que abre o bloco recolhido.
+                          <a href={href} className="underline hover:text-text">
+                            Abrir
+                          </a>
+                        ) : (
+                          <Link href={href} className="underline hover:text-text">
+                            Abrir
+                          </Link>
+                        )}
                       </>
                     )}
                   </p>
@@ -397,7 +421,7 @@ export function EvolutionSection({
   postsUnlinked: number | null;
 }) {
   return (
-    <SectionPanel id="evolucao" title="Evolução" caption="Comparativo fixo de hoje, ontem e 7 dias, sem depender do período escolhido.">
+    <DetailPanel id="evolucao" title="Comparativo fixo e evolução por dia" caption="O comparativo de hoje, ontem e 7 dias não depende do período escolhido. A tabela por dia, sim.">
       <ComparisonTable windows={windows} windowList={windowList} sources={sources} postsUnlinked={postsUnlinked} />
       <SubHeading>Por dia, {period.label}</SubHeading>
       <BlockGate result={daily}>
@@ -426,7 +450,7 @@ export function EvolutionSection({
           />
         )}
       </BlockGate>
-    </SectionPanel>
+    </DetailPanel>
   );
 }
 
@@ -440,11 +464,6 @@ const FUNNEL_COLUMNS: Column[] = [
   { label: "Com botão", numeric: true },
 ];
 
-function stageRate(stage: FunnelStage): string | null {
-  if (!stage.rate) return null;
-  return stage.rate.kind === "value" ? `${formatRate(stage.rate)} ${stage.rateCaption}` : formatRate(stage.rate);
-}
-
 function funnelCells(counts: FunnelCounts): ReactNode[] {
   return buildFunnel(counts).stages.map((stage) => (
     <span key={stage.key} className="whitespace-nowrap">
@@ -456,39 +475,12 @@ function funnelCells(counts: FunnelCounts): ReactNode[] {
 
 export function FunnelSection({ result, period, names }: { result: RpcResult<RawFunnel>; period: MetricsPeriod; names: Names }) {
   return (
-    <SectionPanel id="funil" title="Funil operacional" caption={`Por pessoa e post, ${period.label}. Inclui automações inativas.`}>
+    <DetailPanel id="funil" title="Funil por perfil e por post" caption={`Tabela completa, ${period.label}.`}>
       <BlockGate result={result}>
         {(data) => {
           if (data.by_account.length === 0) return <Empty>Nenhum comentário válido recebido pelo PITCHAT neste período.</Empty>;
-          const funnel = buildFunnel(sumFunnel(data.by_account));
           return (
             <>
-              <div className="grid grid-cols-2 lg:grid-cols-5">
-                {funnel.stages.map((stage) => (
-                  <Stat
-                    key={stage.key}
-                    label={stage.label}
-                    value={formatCount(stage.count)}
-                    color={stage.rate?.kind === "pending" ? "var(--warning)" : undefined}
-                    caption={
-                      <>
-                        {stageRate(stage)}
-                        {stage.key === "button" && <span className="block">{`${formatCount(funnel.linkButton)} com link, ${formatCount(funnel.quickReplyButton)} com resposta rápida`}</span>}
-                      </>
-                    }
-                  />
-                ))}
-              </div>
-              {funnel.pendingExecution > 0 && (
-                <p className="border-t border-border-subtle px-5 py-3 text-sm text-warning">
-                  {plural(funnel.pendingExecution, "pedido sem execução", "pedidos sem execução")}. Motivo não registrado: pode ser automação inativa, palavra-chave diferente, atendimento humano ou queda do processamento.
-                </p>
-              )}
-              {funnel.requestsWithoutAuthor > 0 && (
-                <PanelNote>{plural(funnel.requestsWithoutAuthor, "pedido sem autor identificado ficou", "pedidos sem autor identificado ficaram")} fora dos únicos.</PanelNote>
-              )}
-              <PanelNote>Pedido é um comentário que contém {GOAL_PHRASE}, sem contar acento, pontuação ou maiúscula. A Visão geral conta comentários; aqui contamos pessoas por post.</PanelNote>
-
               <SubHeading>Por perfil</SubHeading>
               <MetricTable
                 wide
@@ -525,7 +517,7 @@ export function FunnelSection({ result, period, names }: { result: RpcResult<Raw
           );
         }}
       </BlockGate>
-    </SectionPanel>
+    </DetailPanel>
   );
 }
 
@@ -542,36 +534,9 @@ function flowCells(bucket: FlowBucket): ReactNode[] {
   return [formatCount(bucket.inbound), formatCount(bucket.inbound_clicks), formatCount(bucket.outbound_automation), formatCount(bucket.outbound_manual)];
 }
 
-function HourBars({ profile, emptyText }: { profile: (FlowBucket & { hourOfDay: number })[]; emptyText: string }) {
-  const totals = profile.map(bucketTotal);
-  const max = Math.max(...totals);
-  if (max === 0) return <Empty>{emptyText}</Empty>;
-  return (
-    <div className="px-5 pb-4">
-      <ol className="flex h-28 items-stretch gap-0.5" aria-label="Mensagens por hora do dia">
-        {profile.map((bucket, index) => {
-          const hour = String(bucket.hourOfDay).padStart(2, "0");
-          const description = `${hour}h: ${plural(totals[index], "mensagem", "mensagens")}`;
-          return (
-            <li key={hour} title={description} className="flex flex-1 flex-col justify-end rounded-t-[4px] bg-surface-3">
-              {totals[index] > 0 && <div className="min-h-0.5 rounded-t-[4px] bg-signal" style={{ height: `${(totals[index] / max) * 100}%` }} />}
-              <span className="sr-only">{description}</span>
-            </li>
-          );
-        })}
-      </ol>
-      <div className="mt-1 grid grid-cols-4 text-xs text-text-muted">
-        {["00h", "06h", "12h", "18h"].map((label) => (
-          <span key={label}>{label}</span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 export function FlowSection({ result, names, nowIso, period, sources }: { result: RpcResult<RawFlow>; names: Names; nowIso: string; period: MetricsPeriod; sources: Sources | null }) {
   return (
-    <SectionPanel id="fluxo" title="Fluxo de mensagens">
+    <DetailPanel id="fluxo" title="Fluxo de mensagens" caption="Totais, por dia, por perfil e por automação. A fila mostra o momento atual.">
       <BlockGate result={result}>
         {(data) => {
           const totals = sumBuckets(data.by_day);
@@ -591,9 +556,6 @@ export function FlowSection({ result, names, nowIso, period, sources }: { result
                 <Stat label="Enviadas pelo Inbox" value={formatCount(outboundCount(totals.outbound_manual))} />
                 <Stat label="Pico" value={peak ? `${formatPeakHour(peak.hour)}, ${plural(peak.total, "mensagem", "mensagens")}` : NO_BASE_LABEL} />
               </div>
-
-              <SubHeading>Por hora do dia</SubHeading>
-              <HourBars profile={hourOfDayProfile(data.by_hour)} emptyText={emptyText} />
 
               <SubHeading>Por dia</SubHeading>
               {data.by_day.length === 0 ? (
@@ -626,7 +588,7 @@ export function FlowSection({ result, names, nowIso, period, sources }: { result
               )}
               <PanelNote>{`Sem vínculo com automação: ${formatCount(data.outbound_automation_unlinked)}`}</PanelNote>
 
-              <SubHeading>Fila agora</SubHeading>
+              <SubHeading>Fila agora, sem depender do período</SubHeading>
               <ul className="flex flex-col gap-1 px-5 pb-4 text-sm text-text-secondary">
                 <li>
                   {queue.messageQueue.kind === "not_recorded"
@@ -641,7 +603,7 @@ export function FlowSection({ result, names, nowIso, period, sources }: { result
           );
         }}
       </BlockGate>
-    </SectionPanel>
+    </DetailPanel>
   );
 }
 
@@ -653,7 +615,7 @@ function percentiles(d: Distribution): string {
 
 export function ResponseTimeSection({ result, names }: { result: RpcResult<RawResponseTimes>; names: Names }) {
   return (
-    <SectionPanel id="tempo" title="Tempo de resposta">
+    <DetailPanel id="tempo" title="Tempo de resposta" caption="Latência interna, por perfil, e primeira resposta humana.">
       <BlockGate result={result}>
         {(data) => {
           const internal = toDistribution(data.internal.samples, data.internal.p50_seconds, data.internal.p95_seconds);
@@ -692,7 +654,7 @@ export function ResponseTimeSection({ result, names }: { result: RpcResult<RawRe
           );
         }}
       </BlockGate>
-    </SectionPanel>
+    </DetailPanel>
   );
 }
 
@@ -712,7 +674,7 @@ export function FailuresSection({
   nowIso: string;
 }) {
   return (
-    <SectionPanel id="falhas" title="Saúde das automações">
+    <DetailPanel id="falhas" title="Saúde das automações" caption="Falhas por nó, erros predominantes e incidentes. Execuções presas mostram o momento atual.">
       <BlockGate result={result}>
         {(data) => {
           const nodes = buildNodeFailures(data.by_node);
@@ -784,7 +746,7 @@ export function FailuresSection({
           );
         }}
       </BlockGate>
-    </SectionPanel>
+    </DetailPanel>
   );
 }
 
@@ -792,7 +754,7 @@ export function FailuresSection({
 
 export function ViralSection({ result, names, postsUnlinked }: { result: RpcResult<RawViral>; names: Names; postsUnlinked: number | null }) {
   return (
-    <SectionPanel id="viralizar" title="Chance de viralizar" caption="Histórico insuficiente. Sem previsão em porcentagem.">
+    <SectionPanel id="viralizar" title="Chance de viralizar" caption="Histórico insuficiente. Sem previsão em porcentagem. Não depende do período escolhido.">
       <BlockGate result={result} timeoutMessage={TIMEOUT_RETRY}>
         {(data) => {
           const accounts = buildViralAccounts(data.accounts);

@@ -6,7 +6,7 @@ import type { RawDaily, Sources } from "./daily";
 import type { RawFailures, RawRunIncident } from "./failures";
 import type { RawFlow } from "./flow";
 import type { RawFunnel } from "./funnel";
-import type { ComparisonWindow, MetricsPeriod, WindowKey } from "./period";
+import type { ComparisonWindow, MetricsPeriod, PeriodComparison, TimeBounds, WindowKey } from "./period";
 import type { RawResponseTimes } from "./response-time";
 import { classifyRpcError, type RpcResult } from "./rpc";
 import { matureBeforeIso, type RawViral } from "./viral";
@@ -153,4 +153,45 @@ export async function loadMetricsData(
     viral,
     runIncident,
   };
+}
+
+export type PeriodComparisonData = {
+  currentTotals: RpcResult<Record<string, number>>;
+  previousTotals: RpcResult<Record<string, number>>;
+  previousFunnel: RpcResult<RawFunnel>;
+  previousResponseTimes: RpcResult<RawResponseTimes>;
+};
+
+/**
+ * Totais do período e da janela anterior, para os KPIs. Fica fora de
+ * `loadMetricsData` e em chamadas separadas de propósito: período longo que
+ * estoure o prazo aqui perde só a variação, não o comparativo fixo nem o valor atual.
+ */
+export async function loadPeriodComparison(
+  admin: SupabaseClient,
+  input: { workspaceId: string; accountId: string | null; comparison: PeriodComparison }
+): Promise<PeriodComparisonData> {
+  const { workspaceId, accountId, comparison } = input;
+  const scoped = { p_workspace_id: workspaceId, p_account_id: accountId, p_phrase: GOAL_PHRASE };
+  const previous = { p_from: comparison.previous.startIso, p_to: comparison.previous.endIso };
+
+  const totalsIn = async (key: string, window: TimeBounds): Promise<RpcResult<Record<string, number>>> => {
+    const result = await callRpc<Record<string, Record<string, number>>>(admin, "metrics_windows_totals", {
+      ...scoped,
+      p_windows: [{ key, from: window.startIso, to: window.endIso }],
+    });
+    if (result.status !== "ok") return result;
+    const totals = result.data[key];
+    return totals ? { status: "ok", data: totals } : { status: "error" };
+  };
+
+  const [currentTotals, previousTotals, previousFunnel, previousResponseTimes] = await Promise.all([
+    totalsIn("current", comparison.current),
+    totalsIn("previous", comparison.previous),
+    // Só os totais por conta interessam aqui: `by_post` vem com o mínimo que a função aceita.
+    callRpc<RawFunnel>(admin, "metrics_funnel", { ...scoped, ...previous, p_post_limit: 1 }),
+    callRpc<RawResponseTimes>(admin, "metrics_response_times", { ...scoped, ...previous }),
+  ]);
+
+  return { currentTotals, previousTotals, previousFunnel, previousResponseTimes };
 }

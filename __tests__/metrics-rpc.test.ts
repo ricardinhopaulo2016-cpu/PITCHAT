@@ -3,8 +3,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 vi.mock("server-only", () => ({}));
 
-import { comparisonWindows, resolvePeriod } from "@/lib/metrics/period";
-import { clearViralCache, loadMetricsData } from "@/lib/metrics/repo";
+import { comparisonWindows, periodComparison, resolvePeriod } from "@/lib/metrics/period";
+import { clearViralCache, loadMetricsData, loadPeriodComparison } from "@/lib/metrics/repo";
 import { classifyRpcError, hasMissing } from "@/lib/metrics/rpc";
 
 describe("classifyRpcError", () => {
@@ -144,6 +144,44 @@ describe("loadMetricsData", () => {
     expect(viralCalls).toBe(3);
     await loadMetricsData(admin, { ...input, now: later, accountId: "outra-conta" });
     expect(viralCalls).toBe(4);
+  });
+
+  describe("loadPeriodComparison", () => {
+    const comparison = periodComparison(resolvePeriod(undefined, undefined, NOW, "hoje"), NOW);
+    const scope = { workspaceId: WORKSPACE, accountId: null, comparison };
+
+    it("consulta atual e anterior em chamadas separadas, sempre com o workspace_id", async () => {
+      const calls: { name: string; args: Record<string, unknown> }[] = [];
+      const data = await loadPeriodComparison(
+        fakeAdmin(async (name, args) => {
+          calls.push({ name, args });
+          if (name !== "metrics_windows_totals") return { data: {}, error: null };
+          const [window] = args.p_windows as { key: string }[];
+          return { data: { [window.key]: { run_started: window.key === "current" ? 7 : 3 } }, error: null };
+        }),
+        scope
+      );
+      expect(calls).toHaveLength(4);
+      expect(calls.every((call) => call.args.p_workspace_id === WORKSPACE)).toBe(true);
+      expect(data.currentTotals).toEqual({ status: "ok", data: { run_started: 7 } });
+      expect(data.previousTotals).toEqual({ status: "ok", data: { run_started: 3 } });
+      expect(calls.find((call) => call.name === "metrics_funnel")?.args.p_from).toBe(comparison.previous.startIso);
+      expect(calls.find((call) => call.name === "metrics_response_times")?.args.p_to).toBe(comparison.previous.endIso);
+    });
+
+    it("falha na janela anterior não derruba o valor atual", async () => {
+      const data = await loadPeriodComparison(
+        fakeAdmin(async (name, args) => {
+          if (name !== "metrics_windows_totals") return { data: null, error: { code: "57014" } };
+          const [window] = args.p_windows as { key: string }[];
+          return window.key === "current" ? { data: { current: { run_started: 7 } }, error: null } : { data: null, error: { code: "57014" } };
+        }),
+        scope
+      );
+      expect(data.currentTotals.status).toBe("ok");
+      expect(data.previousTotals.status).toBe("timeout");
+      expect(data.previousFunnel.status).toBe("timeout");
+    });
   });
 
   it("exceção e data nula viram error, sem logar mensagem", async () => {

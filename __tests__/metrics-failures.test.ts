@@ -143,13 +143,20 @@ describe("buildIncidents", () => {
       runShort: "a1940a6a",
       status: "failed",
       at: "2026-11-01T10:05:00Z",
+      automationId: "auto",
       automationName: "Fluxo",
       automationInactive: true,
       accountId: "acc",
       nodeLabel: "Primeira DM",
       nodeId: "n1",
+      stepFailed: true,
       cause: "Invalid OAuth access token.",
     });
+  });
+
+  it("etapa que não falhou não marca stepFailed", () => {
+    expect(buildIncidents([{ ...base, step_status: "succeeded" }])[0].stepFailed).toBe(false);
+    expect(buildIncidents([{ ...base, step_status: null }])[0].stepFailed).toBe(false);
   });
 
   it("causa nula vira Causa não registrada", () => {

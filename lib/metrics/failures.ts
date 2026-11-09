@@ -141,11 +141,14 @@ export type Incident = {
   runShort: string;
   status: "failed" | "running";
   at: string;
+  automationId: string;
   automationName: string;
   automationInactive: boolean;
   accountId: string | null;
   nodeLabel: string | null;
   nodeId: string | null;
+  /** A última etapa da execução terminou em falha, o critério de `by_node`. */
+  stepFailed: boolean;
   cause: string;
 };
 
@@ -160,11 +163,13 @@ export function buildIncidents(rows: RawIncident[]): Incident[] {
     runShort: row.run_id.slice(0, 8),
     status: row.status,
     at: row.updated_at,
+    automationId: row.automation_id,
     automationName: row.automation_name,
     automationInactive: row.automation_status !== "active",
     accountId: row.social_account_id,
     nodeLabel: row.node_type ? nodeLabel(row.node_type) : null,
     nodeId: row.node_id,
+    stepFailed: row.step_status === "failed",
     cause: incidentCause(row),
   }));
 }
