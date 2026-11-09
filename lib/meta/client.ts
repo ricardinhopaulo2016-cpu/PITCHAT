@@ -164,10 +164,18 @@ async function callGraphApi(
   return json;
 }
 
-async function getGraphApi(path: string, accessToken: string): Promise<Record<string, unknown>> {
+// A busca do horário roda antes do disparo da DM: a Meta lenta não pode segurá-la.
+const COMMENT_TIMESTAMP_TIMEOUT_MS = 2_000;
+
+async function getGraphApi(
+  path: string,
+  accessToken: string,
+  options: { timeoutMs?: number } = {},
+): Promise<Record<string, unknown>> {
   const res = await fetch(`${GRAPH_BASE_URL}/${getGraphApiVersion()}${path}`, {
     method: "GET",
     headers: { Authorization: `Bearer ${accessToken}` },
+    ...(options.timeoutMs ? { signal: AbortSignal.timeout(options.timeoutMs) } : {}),
   });
   const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   if (!res.ok) {
@@ -186,7 +194,9 @@ async function getGraphApi(path: string, accessToken: string): Promise<Record<st
 
 export const realMetaClient: MetaClient = {
   async getCommentTimestamp({ accessToken, commentId }) {
-    const json = await getGraphApi(`/${commentId}?fields=timestamp`, accessToken);
+    const json = await getGraphApi(`/${commentId}?fields=timestamp`, accessToken, {
+      timeoutMs: COMMENT_TIMESTAMP_TIMEOUT_MS,
+    });
     if (typeof json.timestamp !== "string") return null;
     const ms = new Date(json.timestamp).getTime();
     return Number.isNaN(ms) ? null : new Date(ms).toISOString();

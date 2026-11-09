@@ -127,4 +127,21 @@ describe("realMetaClient.getCommentTimestamp", () => {
     vi.stubGlobal("fetch", fetchReturning({ id: "c1" }));
     expect(await realMetaClient.getCommentTimestamp!({ accessToken: "t", commentId: "c1" })).toBeNull();
   });
+
+  it("desiste em até 2s quando a Meta não responde", async () => {
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
+    const fetchMock = vi.fn(
+      (_url: string, init: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          init.signal!.addEventListener("abort", () => reject(init.signal!.reason));
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      realMetaClient.getCommentTimestamp!({ accessToken: "t", commentId: "c1" }),
+    ).rejects.toBeDefined();
+    expect(timeoutSpy).toHaveBeenCalledWith(2_000);
+    timeoutSpy.mockRestore();
+  });
 });
