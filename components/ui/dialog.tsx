@@ -18,17 +18,20 @@ export function DialogContent({
   title,
   description,
   className = "",
+  size = "md",
 }: {
   children: ReactNode;
   title: string;
   description?: string;
   className?: string;
+  /** "xl" para tabelas (lote de vídeos). */
+  size?: "md" | "xl";
 }) {
   return (
     <RadixDialog.Portal>
       <RadixDialog.Overlay className="fixed inset-0 z-40 bg-black/60 data-[state=open]:animate-[overlay-in_var(--motion-panel)_var(--ease-out)]" />
       <RadixDialog.Content
-        className={`fixed left-1/2 top-1/2 z-50 max-h-[85vh] w-[min(560px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-[var(--radius-panel-lg)] border border-border bg-surface-elevated p-6 shadow-[var(--shadow-elevated)] focus:outline-none data-[state=open]:animate-[dialog-in_var(--motion-panel)_var(--ease-out)] ${className}`}
+        className={`fixed left-1/2 top-1/2 z-50 max-h-[85vh] ${size === "xl" ? "w-[min(1180px,calc(100vw-32px))]" : "w-[min(560px,calc(100vw-32px))]"} -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-[var(--radius-panel-lg)] border border-border bg-surface-elevated p-6 shadow-[var(--shadow-elevated)] focus:outline-none data-[state=open]:animate-[dialog-in_var(--motion-panel)_var(--ease-out)] ${className}`}
       >
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>

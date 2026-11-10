@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
+import { uploadMediaFile } from "@/lib/media/upload-client";
 import { formatBytes } from "@/lib/media/format";
 import { friendlyUploadError } from "@/lib/media/error-messages";
 import { Button } from "@/components/ui/button";
@@ -40,48 +40,12 @@ export function MediaUploadForm({ onUploaded }: { onUploaded?: (mediaAssetId: st
   }
 
   async function handleSend(file: File) {
-    const supabase = getSupabaseBrowserClient();
-    if (!supabase) {
-      setState({ phase: "failed", message: "O sistema ainda não está configurado.", file });
-      return;
-    }
-
     try {
-      setState({ phase: "uploading", file });
-      const urlRes = await fetch("/api/media/upload-url", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ filename: file.name, fileSize: file.size }),
-      });
-      const urlBody = await urlRes.json().catch(() => ({}));
-      if (!urlRes.ok) throw new Error(urlBody.error);
-      const { mediaAssetId, storageKey, token } = urlBody;
-
-      const { error: uploadError } = await supabase.storage
-        .from("media")
-        .uploadToSignedUrl(storageKey, token, file);
-      if (uploadError) throw new Error("UPLOAD_FAILED");
-
-      setState({ phase: "processing", file });
-      const finalizeRes = await fetch("/api/media/finalize", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mediaAssetId }),
-      });
-      const finalizeBody = await finalizeRes.json().catch(() => ({}));
-      if (!finalizeRes.ok) throw new Error(finalizeBody.error);
-
-      if (finalizeBody.status === "EXACT_DUPLICATE" && finalizeBody.restored) {
-        // Vídeo já publicado antes, cujo arquivo tinha sido apagado: voltou a ficar pronto para postar.
-        setState({ phase: "ready" });
-        onUploaded?.(finalizeBody.existingAssetId);
-      } else if (finalizeBody.status === "EXACT_DUPLICATE") {
-        setState({ phase: "duplicate", existingAssetId: finalizeBody.existingAssetId });
-        onUploaded?.(finalizeBody.existingAssetId);
-      } else {
-        setState({ phase: "ready" });
-        onUploaded?.(mediaAssetId);
-      }
+      const result = await uploadMediaFile(file, (phase) => setState({ phase, file }));
+      // Duplicata restaurada: vídeo já publicado antes, cujo arquivo tinha sido apagado, voltou a ficar pronto.
+      if (result.duplicate && !result.restored) setState({ phase: "duplicate", existingAssetId: result.mediaAssetId });
+      else setState({ phase: "ready" });
+      onUploaded?.(result.mediaAssetId);
       router.refresh();
     } catch (err) {
       const code = err instanceof Error ? err.message : null;

@@ -5,6 +5,7 @@ import { getAuthContext } from "@/lib/auth/session";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { formatBytes, formatDurationMs, formatResolution } from "@/lib/media/format";
 import { mediaStatusLabel } from "@/lib/media/status-label";
+import { isStaleUpload } from "@/lib/publishing/stuck";
 import { PageHeader } from "@/components/app-shell/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
 import { MediaUploadForm } from "./upload-form";
@@ -59,8 +60,10 @@ export default async function MediaLibraryPage() {
     );
   }
 
+  // Envio abandonado (aba fechada, rede caiu) nunca termina: não pode prender a página recarregando para sempre.
+  const now = new Date();
   const hasPending = (assets ?? []).some(
-    (a) => a.status === "pending" || a.status === "processing"
+    (a) => (a.status === "pending" || a.status === "processing") && !isStaleUpload(a, now)
   );
 
   return (
@@ -103,7 +106,7 @@ export default async function MediaLibraryPage() {
                       {asset.original_filename ?? "(sem nome)"}
                     </p>
                     <p className="text-xs text-text-muted">
-                      <StatusBadge status={asset.status} removed={asset.storage_removed_at !== null} /> ·{" "}
+                      <StatusBadge status={asset.status} removed={asset.storage_removed_at !== null} stale={isStaleUpload(asset, now)} /> ·{" "}
                       {formatDurationMs(asset.duration_ms)} ·{" "}
                       {formatResolution(asset.width, asset.height)} ·{" "}
                       {formatBytes(asset.file_size)} ·{" "}
@@ -159,7 +162,8 @@ function Thumbnail({ mimeType, url }: { mimeType: string | null; url?: string })
   );
 }
 
-function StatusBadge({ status, removed }: { status: string; removed: boolean }) {
+function StatusBadge({ status, removed, stale }: { status: string; removed: boolean; stale: boolean }) {
+  if (stale) return <span className="text-danger">Envio não terminou: envie de novo</span>;
   // Pronta, mas sem arquivo: foi apagado depois de publicar para não pesar o armazenamento.
   if (status === "ready" && removed) return <span className="text-text-muted">Arquivo apagado após publicar</span>;
   const label = mediaStatusLabel(status);

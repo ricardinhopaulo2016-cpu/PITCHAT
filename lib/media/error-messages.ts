@@ -10,7 +10,8 @@ const FRIENDLY_MESSAGES: Record<string, string> = {
   FFPROBE_FAILED: "Não conseguimos processar esse vídeo.",
   FILE_SIZE_INVALID: "Não conseguimos processar esse arquivo.",
   UNAUTHORIZED: "Sua sessão expirou — atualize a página e faça login de novo.",
-  SUPABASE_NOT_CONFIGURED: "O sistema ainda não está configurado. Fale com o administrador.",
+  UPLOAD_FAILED: "O envio do arquivo caiu no meio. Tente de novo.",
+  SUPABASE_NOT_CONFIGURED:"O sistema ainda não está configurado. Fale com o administrador.",
 };
 
 const DEFAULT_MESSAGE = "Não foi possível enviar o arquivo.";

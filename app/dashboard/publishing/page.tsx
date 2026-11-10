@@ -12,7 +12,9 @@ import { accountCanPublish } from "@/lib/publishing/validate";
 import { friendlyPublishError } from "@/lib/publishing/messages";
 import type { PublishError } from "@/lib/publishing/engine";
 import { AutoRefreshWhilePending } from "../media/auto-refresh";
+import { isStuckProcessing } from "@/lib/publishing/stuck";
 import { Composer, type ComposerAsset } from "./composer";
+import { BatchComposer } from "./batch-composer";
 import { PostActions } from "./post-actions";
 import { dayKey, formatClock, formatDayHeading, formatPostTime, isDayKey, shiftWeek, weekOf, type WeekDay } from "./format";
 
@@ -129,10 +131,14 @@ export default async function PublishingPage({ searchParams }: { searchParams: P
   const upcoming = posts.filter((p) => p.status === "scheduled" || p.status === "processing");
   const failed = posts.filter((p) => p.status === "failed").reverse();
   const published = posts.filter((p) => p.status === "published").reverse();
+  // Travado em "Publicando" muito depois do horário: a fila perdeu o post e ninguém vai mexer nele sozinho.
+  const now = new Date();
+  const stuck = [...new Map([...posts, ...gridPosts].map((p) => [p.id, p])).values()].filter((p) => isStuckProcessing(p, now));
+  const stuckIds = new Set(stuck.map((p) => p.id));
 
   return (
     <>
-      <AutoRefreshWhilePending active={[...posts, ...gridPosts].some((p) => p.status === "processing")} />
+      <AutoRefreshWhilePending active={[...posts, ...gridPosts].some((p) => p.status === "processing" && !stuckIds.has(p.id))} />
 
       <PageHeader
         title="Publicar"
@@ -168,6 +174,17 @@ export default async function PublishingPage({ searchParams }: { searchParams: P
 
           {postsError && <p className="text-sm text-danger">Não foi possível carregar os posts agora.</p>}
 
+          {stuck.length > 0 && (
+            <div role="alert" className="rounded-[var(--radius-panel-sm)] border border-warning bg-warning-soft px-4 py-3 text-sm text-text">
+              <p className="font-medium">
+                {stuck.length === 1 ? "1 post está" : `${stuck.length} posts estão`} em &quot;Publicando&quot; há mais de 30 minutos.
+              </p>
+              <p className="mt-0.5 text-text-secondary">
+                {stuck.map((p) => `@${p.account?.username ?? "conta"} ${formatPostTime(p.scheduled_at)}`).join(" · ")}. Confira no Instagram se saiu; se não saiu, avise o Claude.
+              </p>
+            </div>
+          )}
+
         {failed.length > 0 && (
           <Section title="Com erro" count={failed.length}>
             <PostList posts={failed} />
@@ -196,7 +213,10 @@ export default async function PublishingPage({ searchParams }: { searchParams: P
         )}
         </div>
 
-        <Composer assets={assets} accounts={accounts} />
+        <div className="flex flex-col gap-4">
+          <BatchComposer accounts={accounts} />
+          <Composer assets={assets} accounts={accounts} />
+        </div>
       </div>
     </>
   );
