@@ -9,9 +9,17 @@ export type InstagramAccount = {
   status: string;
   status_detail: string | null;
   token_expires_at: string | null;
+  permissions: string[] | null;
 };
 
-const COLUMNS = "id, profile_id, username, status, status_detail, token_expires_at";
+const COLUMNS = "id, profile_id, username, status, status_detail, token_expires_at, permissions";
+
+export const INSIGHTS_PERMISSION = "instagram_business_manage_insights";
+
+/** Conta conectada antes de 10/11/2026 não tem a permissão de métricas: só reconectando. */
+export function accountLacksInsights(account: Pick<InstagramAccount, "status" | "permissions">): boolean {
+  return account.status === "connected" && !(account.permissions ?? []).includes(INSIGHTS_PERMISSION);
+}
 
 /** Todas as contas Instagram não-revogadas do workspace — NUNCA colapsa por profile (um profile pode ter várias). */
 export async function listWorkspaceInstagramAccounts(admin: SupabaseClient, workspaceId: string): Promise<InstagramAccount[]> {

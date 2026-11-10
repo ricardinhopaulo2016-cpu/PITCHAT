@@ -27,6 +27,9 @@ const SCOPES = [
   "instagram_business_manage_messages",
   "instagram_business_manage_comments",
   "instagram_business_content_publish",
+  // Views, alcance e retenção de cada Reel (GET /{media-id}/insights).
+  // Conferido em 10/11/2026 numa conta que já tinha a permissão.
+  "instagram_business_manage_insights",
 ].join(",");
 
 export type MetaOAuthConfig = {

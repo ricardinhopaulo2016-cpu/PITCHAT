@@ -7,7 +7,7 @@ import { AccountTile } from "@/components/ui/account-tile";
 import { EmptyState } from "@/components/ui/empty-state";
 import { DisconnectButton } from "./disconnect-button";
 import { ResubscribeButton } from "./resubscribe-button";
-import { groupAccountsByProfile, listWorkspaceInstagramAccounts, type InstagramAccount } from "@/lib/social-accounts/repo";
+import { accountLacksInsights, groupAccountsByProfile, listWorkspaceInstagramAccounts, type InstagramAccount } from "@/lib/social-accounts/repo";
 
 type ProfileRow = { id: string; name: string; slug: string };
 
@@ -47,6 +47,7 @@ const STATUS_COLOR: Record<string, string> = {
 function AccountRow({ account }: { account: InstagramAccount }) {
   const expiringSoon = account.token_expires_at && needsRefresh(new Date(account.token_expires_at));
   const needsReconnect = account.status !== "connected" && account.status !== "pending";
+  const lacksInsights = accountLacksInsights(account);
 
   return (
     <li className="flex flex-wrap items-center gap-4 px-6 py-3.5">
@@ -61,6 +62,7 @@ function AccountRow({ account }: { account: InstagramAccount }) {
         {account.status_detail && STATUS_DETAIL_LABEL[account.status_detail] && (
           <p className="mt-0.5 text-xs text-warning">{STATUS_DETAIL_LABEL[account.status_detail]}</p>
         )}
+        {lacksInsights && <p className="mt-0.5 text-xs text-warning">Reconecte para liberar as métricas dos Reels (views e alcance).</p>}
       </div>
 
       <div className="flex shrink-0 items-center gap-3">
@@ -68,7 +70,7 @@ function AccountRow({ account }: { account: InstagramAccount }) {
         <a
           href={`/api/auth/meta/start?profileId=${account.profile_id}&reconnect=${account.id}`}
           className={
-            needsReconnect
+            needsReconnect || lacksInsights
               ? "inline-flex h-8 items-center justify-center rounded-[var(--radius-button)] bg-signal px-3 text-sm font-medium text-signal-on transition-colors duration-[var(--motion-fast)] hover:bg-signal-hover"
               : "text-sm text-text-secondary hover:text-text"
           }
