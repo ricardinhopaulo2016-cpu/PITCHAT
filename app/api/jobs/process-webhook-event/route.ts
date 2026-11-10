@@ -89,7 +89,7 @@ export async function POST(request: Request) {
         // Não dispara automação (trigger suportado no V1 continua sendo só
         // comentário) — só grava a mensagem real, pro Inbox mostrar de
         // verdade (achado real 24/09/2026: antes disso, era só descartada).
-        await ingestInstagramMessage(admin, socialAccount, event);
+        await ingestInstagramMessage(admin, socialAccount, event, realMetaClient);
       } else if (event.type === "InstagramMessageSeen") {
         await ingestInstagramMessageSeen(admin, socialAccount, event);
       }

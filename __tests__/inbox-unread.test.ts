@@ -589,6 +589,42 @@ describe("contato", () => {
     await ingestInstagramMessage(fake as never, socialAccount, dm);
     expect(fake.__tables.contacts[0].username).toBe("paulo");
   });
+
+  it("DM de contato sem @ busca na Meta e salva", async () => {
+    const fake = seedConversation();
+    const getUserProfile = vi.fn().mockResolvedValue({ name: "Paulo", username: "paulo" });
+    await ingestInstagramMessage(fake as never, socialAccount, dm, { ...fakeMeta(), getUserProfile });
+    expect(getUserProfile).toHaveBeenCalledWith({ accessToken: "token-falso", userId: "user-1" });
+    expect(fake.__tables.contacts[0].username).toBe("paulo");
+  });
+
+  it("contato que já tem @ não gasta chamada na Meta", async () => {
+    const fake = seedConversation();
+    fake.__tables.contacts[0].username = "paulo";
+    const getUserProfile = vi.fn();
+    await ingestInstagramMessage(fake as never, socialAccount, dm, { ...fakeMeta(), getUserProfile });
+    expect(getUserProfile).not.toHaveBeenCalled();
+  });
+
+  it("DM repetida pelo QStash não busca o @ de novo", async () => {
+    const fake = seedConversation();
+    const getUserProfile = vi.fn().mockResolvedValue({ name: null, username: null });
+    const meta = { ...fakeMeta(), getUserProfile };
+    await ingestInstagramMessage(fake as never, socialAccount, dm, meta);
+    await ingestInstagramMessage(fake as never, socialAccount, dm, meta);
+    expect(getUserProfile).toHaveBeenCalledTimes(1);
+  });
+
+  it("Meta recusar o perfil não perde a DM", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const fake = seedConversation();
+    const getUserProfile = vi.fn().mockRejectedValue(new Error("User consent is required"));
+    const result = await ingestInstagramMessage(fake as never, socialAccount, dm, { ...fakeMeta(), getUserProfile });
+    expect(result).toEqual({ processed: true });
+    expect(fake.__tables.messages).toHaveLength(1);
+    expect(fake.__tables.contacts[0].username).toBeUndefined();
+    spy.mockRestore();
+  });
 });
 
 describe("código no ar antes da migration", () => {

@@ -331,7 +331,8 @@ export async function ingestInstagramQuickReply(
 export async function ingestInstagramMessage(
   admin: SupabaseClient,
   socialAccount: SocialAccountRow,
-  event: InstagramMessageReceived
+  event: InstagramMessageReceived,
+  meta?: MetaClient
 ): Promise<{ processed: boolean; reason?: string }> {
   if (event.fromUserId && event.fromUserId === socialAccount.external_account_id) {
     return { processed: false, reason: "IGNORED_OWN_MESSAGE" }; // eco da própria mensagem que a gente mandou
@@ -352,7 +353,41 @@ export async function ingestInstagramMessage(
   // DM. Relançar é seguro: o dedupe por mid cobre a repetição do QStash.
   if (failure) throw new Error(`Falha ao gravar DM recebida: ${failure}`);
 
+  if (inserted && !contact.username && meta) {
+    await recoverMissingUsername(admin, meta, socialAccount, contact.id as string, event.fromUserId);
+  }
+
   return inserted ? { processed: true } : { processed: false, reason: "DUPLICATE_MESSAGE_IGNORED" };
+}
+
+/**
+ * Evento de DM não traz o @, então contato que só mandou DM ficaria sem nome.
+ * Quem mandou mensagem já deu o consentimento que a User Profile API exige (ver
+ * MetaClient.getUserProfile). Roda depois de gravar a DM e nunca lança: sem o @
+ * a conversa só continua aparecendo como "Contato", e a próxima DM tenta de novo.
+ */
+async function recoverMissingUsername(
+  admin: SupabaseClient,
+  meta: MetaClient,
+  socialAccount: SocialAccountRow,
+  contactId: string,
+  platformUserId: string
+): Promise<void> {
+  if (!meta.getUserProfile || !socialAccount.access_token_encrypted) return;
+  try {
+    const { username } = await meta.getUserProfile({
+      accessToken: decryptToken(socialAccount.access_token_encrypted),
+      userId: platformUserId,
+    });
+    if (!username) return;
+    await admin
+      .from("contacts")
+      .update({ username })
+      .eq("id", contactId)
+      .eq("workspace_id", socialAccount.workspace_id);
+  } catch (err) {
+    console.error("[inbox] falha ao buscar o @ do contato:", err instanceof Error ? err.message : String(err));
+  }
 }
 
 /**
@@ -455,7 +490,7 @@ async function upsertContact(
   const now = new Date().toISOString();
   const { data: existing } = await admin
     .from("contacts")
-    .select("id")
+    .select("id, username")
     .eq("workspace_id", workspaceId)
     .eq("platform", "instagram")
     .eq("platform_user_id", platformUserId)
@@ -467,7 +502,7 @@ async function upsertContact(
       .from("contacts")
       .update({ last_seen_at: now, ...(username ? { username } : {}) })
       .eq("id", existing.id);
-    return existing;
+    return { id: existing.id, username: username ?? existing.username };
   }
 
   const { data: created } = await admin
@@ -480,7 +515,7 @@ async function upsertContact(
       first_seen_at: now,
       last_seen_at: now,
     })
-    .select("id")
+    .select("id, username")
     .single();
 
   return created!;
