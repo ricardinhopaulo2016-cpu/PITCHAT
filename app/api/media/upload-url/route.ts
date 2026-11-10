@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
-import { getAuthContext } from "@/lib/auth/session";
+import { getRequestAuth } from "@/lib/auth/api-token";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getMaxUploadSizeBytes } from "@/lib/media/limits";
 
@@ -18,7 +18,7 @@ export const runtime = "nodejs";
  * depois que os bytes de verdade chegaram no Storage.
  */
 export async function POST(request: Request) {
-  const auth = await getAuthContext();
+  const auth = await getRequestAuth(request);
   if (!auth) {
     return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
   }

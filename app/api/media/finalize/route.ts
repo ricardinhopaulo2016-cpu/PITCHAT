@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getAuthContext } from "@/lib/auth/session";
+import { getRequestAuth } from "@/lib/auth/api-token";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { detectAndValidateMime } from "@/lib/media/mime";
 import { sha256Buffer } from "@/lib/media/hash";
@@ -39,7 +39,7 @@ async function markFailed(
  * no passo 1.
  */
 export async function POST(request: Request) {
-  const auth = await getAuthContext();
+  const auth = await getRequestAuth(request);
   if (!auth) {
     return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
   }

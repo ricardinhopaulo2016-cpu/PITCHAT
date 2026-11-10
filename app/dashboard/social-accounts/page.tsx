@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/app-shell/page-header";
 import { AccountTile } from "@/components/ui/account-tile";
 import { EmptyState } from "@/components/ui/empty-state";
 import { DisconnectButton } from "./disconnect-button";
+import { ApiTokens, type ApiTokenRow } from "./api-tokens";
 import { ResubscribeButton } from "./resubscribe-button";
 import { accountLacksInsights, groupAccountsByProfile, listWorkspaceInstagramAccounts, type InstagramAccount } from "@/lib/social-accounts/repo";
 
@@ -98,10 +99,18 @@ export default async function SocialAccountsPage({
 
   // As três queries são independentes entre si — paralelizar em vez de
   // esperar uma pela outra economiza ~2 round-trips ao Postgres por load.
-  const [{ data: profiles }, accounts, { data: activeAutomations }] = await Promise.all([
+  const [{ data: profiles }, accounts, { data: activeAutomations }, { data: apiTokens }] = await Promise.all([
     admin.from("profiles").select("id, name, slug").eq("workspace_id", auth.workspace.id).returns<ProfileRow[]>(),
     listWorkspaceInstagramAccounts(admin, auth.workspace.id),
     admin.from("automations").select("profile_id").eq("workspace_id", auth.workspace.id).eq("status", "active"),
+    // Antes da migration a tabela não existe: o erro vira lista vazia e a seção some.
+    admin
+      .from("api_tokens")
+      .select("id, name, token_prefix, created_at, last_used_at, revoked_at")
+      .eq("workspace_id", auth.workspace.id)
+      .order("created_at", { ascending: false })
+      .limit(20)
+      .returns<ApiTokenRow[]>(),
   ]);
 
   const activeCountByProfile = new Map<string, number>();
@@ -190,6 +199,7 @@ export default async function SocialAccountsPage({
         )}
 
         {accounts.length > 0 && <ResubscribeButton />}
+        {apiTokens && <ApiTokens tokens={apiTokens} />}
       </div>
     </>
   );
