@@ -222,7 +222,7 @@ export function BatchComposer({ accounts }: { accounts: ComposerAccount[] }) {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent size="xl" title="Agendar em lote" description="Revisar confere tudo sem gravar nada. Um problema em qualquer linha segura o lote inteiro.">
           <div className="flex flex-col gap-5" {...(uploading ? { "data-realtime-hold": "" } : {})}>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[200px_1fr_1fr_150px_auto]">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[170px_minmax(0,1fr)_210px_160px_auto]">
               <div className="flex flex-col gap-1">
                 <span className={fieldLabel}>Formato</span>
                 <div className="flex gap-1 rounded-[12px] bg-bg p-1">
@@ -248,7 +248,7 @@ export function BatchComposer({ accounts }: { accounts: ComposerAccount[] }) {
                 <Input id="batch-start" type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} />
               </div>
               <div className="flex flex-col gap-1">
-                <label className={fieldLabel} htmlFor="batch-interval">Intervalo na mesma conta</label>
+                <label className={fieldLabel} htmlFor="batch-interval">Intervalo por conta</label>
                 <Select id="batch-interval" value={String(intervalMinutes)} onChange={(e) => setIntervalMinutes(Number(e.target.value))}>
                   <option value="30">30 minutos</option>
                   <option value="60">1 hora</option>
