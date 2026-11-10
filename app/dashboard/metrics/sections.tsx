@@ -462,15 +462,25 @@ const FUNNEL_COLUMNS: Column[] = [
   { label: "Com execução", numeric: true },
   { label: "Primeira DM", numeric: true },
   { label: "Com botão", numeric: true },
+  { label: "Tocou", numeric: true },
+  { label: "Abriu o link", numeric: true },
 ];
 
+const FUNNEL_KEYS = ["comments", "requests", "executions", "first_dm", "button", "tapped", "clicked"] as const;
+
 function funnelCells(counts: FunnelCounts): ReactNode[] {
-  return buildFunnel(counts).stages.map((stage) => (
-    <span key={stage.key} className="whitespace-nowrap">
-      <span className="text-text">{formatCount(stage.count)}</span>
-      {stage.rate && <span className="ml-1.5 text-xs text-text-muted">{formatRate(stage.rate)}</span>}
-    </span>
-  ));
+  const stages = buildFunnel(counts).stages;
+  // Toque e clique só existem depois da migration 20261110180000: sem o dado, a célula fica com traço.
+  return FUNNEL_KEYS.map((key) => {
+    const stage = stages.find((item) => item.key === key);
+    if (!stage) return <span key={key} className="text-text-muted">–</span>;
+    return (
+      <span key={key} className="whitespace-nowrap">
+        <span className="text-text">{formatCount(stage.count)}</span>
+        {stage.rate && <span className="ml-1.5 text-xs text-text-muted">{formatRate(stage.rate)}</span>}
+      </span>
+    );
+  });
 }
 
 export function FunnelSection({ result, period, names }: { result: RpcResult<RawFunnel>; period: MetricsPeriod; names: Names }) {

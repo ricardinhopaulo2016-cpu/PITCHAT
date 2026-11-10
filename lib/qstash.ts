@@ -123,6 +123,37 @@ export async function schedulePostAdvance(params: {
   }
 }
 
+/**
+ * Agenda as fotos de métricas de um Reel recém-publicado (1h, 3h, 6h, 24h,
+ * 48h, 72h, 7d). Uma idade que a fila recusar (ex.: atraso acima do limite do
+ * plano) fica para o cron diário de reserva.
+ */
+export async function scheduleReelSnapshots(params: {
+  postId: string;
+  ages: { age: number; delaySeconds: number }[];
+}): Promise<{ scheduled: number; failed: number }> {
+  const client = getQstashClient();
+  const appUrl = getAppUrl();
+  if (!client || !appUrl) return { scheduled: 0, failed: params.ages.length };
+
+  let scheduled = 0;
+  for (const { age, delaySeconds } of params.ages) {
+    try {
+      await client.publishJSON({
+        url: `${appUrl}/api/jobs/snapshot-reel`,
+        body: { postId: params.postId, ageHours: age },
+        delay: delaySeconds,
+        deduplicationId: sanitizeDeduplicationId(`reel-snapshot-${params.postId}-${age}`),
+        retries: 3,
+      });
+      scheduled++;
+    } catch {
+      // Segue para a próxima idade: o cron diário cobre a que faltou.
+    }
+  }
+  return { scheduled, failed: params.ages.length - scheduled };
+}
+
 let cachedReceiver: Receiver | null | undefined;
 
 /** Verifica a assinatura `Upstash-Signature` de um callback do QStash. */

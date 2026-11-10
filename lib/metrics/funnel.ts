@@ -9,10 +9,14 @@ export type FunnelCounts = {
   button: number;
   link_button: number;
   quick_reply_button: number;
+  /** Tocou na resposta rápida (QUERO ASSISTIR). Ausente antes da migration 20261110180000. */
+  tapped?: number;
+  /** Abriu o link do botão pelo redirecionador /r/, sem contar robô de prévia. */
+  clicked?: number;
 };
 
 export type FunnelStage = {
-  key: "comments" | "requests" | "executions" | "first_dm" | "button";
+  key: "comments" | "requests" | "executions" | "first_dm" | "button" | "tapped" | "clicked";
   label: string;
   count: number;
   rate: Rate | null;
@@ -40,6 +44,13 @@ export function buildFunnel(c: FunnelCounts): Funnel {
       { key: "executions", label: "Com execução iniciada", count: c.executions, rate: executionRate, rateCaption: "dos pedidos" },
       { key: "first_dm", label: "Primeira DM enviada", count: c.first_dm, rate: rate(c.first_dm, c.executions), rateCaption: "das execuções" },
       { key: "button", label: "Mensagem com botão enviada", count: c.button, rate: rate(c.button, c.first_dm), rateCaption: "das primeiras DMs" },
+      // Daqui para baixo é a pessoa agindo, não o PITCHAT: não entra na "maior perda" operacional.
+      ...(c.tapped === undefined
+        ? []
+        : [{ key: "tapped" as const, label: "Tocou no botão", count: c.tapped, rate: rate(c.tapped, c.quick_reply_button), rateCaption: "de quem recebeu o botão" }]),
+      ...(c.clicked === undefined
+        ? []
+        : [{ key: "clicked" as const, label: "Abriu o link", count: c.clicked, rate: rate(c.clicked, c.link_button), rateCaption: "de quem recebeu o link" }]),
     ],
     pendingExecution: Math.max(0, c.requests_unique - c.executions),
     requestsWithoutAuthor: c.requests_without_author,
@@ -69,6 +80,8 @@ export function sumFunnel(rows: FunnelCounts[]): FunnelCounts {
     total.button += row.button;
     total.link_button += row.link_button;
     total.quick_reply_button += row.quick_reply_button;
+    if (row.tapped !== undefined) total.tapped = (total.tapped ?? 0) + row.tapped;
+    if (row.clicked !== undefined) total.clicked = (total.clicked ?? 0) + row.clicked;
   }
   return total;
 }

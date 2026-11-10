@@ -1,5 +1,7 @@
 {
-  "regions": ["pdx1"],
+  "regions": [
+    "pdx1"
+  ],
   "crons": [
     {
       "path": "/api/cron/refresh-meta-tokens",
@@ -8,6 +10,10 @@
     {
       "path": "/api/cron/sweep-scheduled-posts",
       "schedule": "15 6 * * *"
+    },
+    {
+      "path": "/api/cron/snapshot-reels",
+      "schedule": "30 6 * * *"
     }
   ]
 }

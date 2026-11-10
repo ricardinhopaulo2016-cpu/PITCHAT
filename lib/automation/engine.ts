@@ -7,6 +7,7 @@ import { getRetryBackoffMinutes } from "./retry-policy";
 import { recordOutboundMessage } from "./messages";
 import { NAME_TOKEN, firstNameFrom, renderMessageText } from "./personalize";
 import * as qstash from "@/lib/qstash";
+import { trackedButtonUrl } from "@/lib/links/tracked-link";
 
 const MAX_STEPS_PER_INVOCATION = 50; // trava de segurança contra loop infinito num grafo mal configurado
 
@@ -283,7 +284,8 @@ export async function advanceRun(
                 igUserId: socialAccount.externalAccountId,
                 recipientId,
                 text: outcome.text,
-                buttons: [{ type: "web_url", title: outcome.button.title, url: outcome.button.url }],
+                // Passa pelo /r/ para medir o clique; sem configuração, vai o link original.
+                buttons: [{ type: "web_url", title: outcome.button.title, url: trackedButtonUrl(run.id, currentNode.id, outcome.button.url) }],
               })
             : await meta.sendTextMessage({
                 accessToken: socialAccount.accessToken,

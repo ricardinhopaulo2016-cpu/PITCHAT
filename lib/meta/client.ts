@@ -172,7 +172,7 @@ async function callGraphApi(
 // A busca do horário roda antes do disparo da DM: a Meta lenta não pode segurá-la.
 const COMMENT_TIMESTAMP_TIMEOUT_MS = 2_000;
 
-async function getGraphApi(
+export async function getGraphApi(
   path: string,
   accessToken: string,
   options: { timeoutMs?: number } = {},

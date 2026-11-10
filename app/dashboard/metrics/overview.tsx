@@ -195,7 +195,7 @@ function passageText(stage: FunnelStage, previous: FunnelStage): string {
 function FunnelRows({ funnel, worst }: { funnel: Funnel; worst: FunnelLoss | null }) {
   const max = Math.max(...funnel.stages.map((stage) => stage.count), 1);
   return (
-    <ol className="flex flex-col gap-1 px-5 py-4" aria-label="Funil do comentário até a mensagem com botão">
+    <ol className="flex flex-col gap-1 px-5 py-4" aria-label="Funil do comentário até a abertura do link">
       {funnel.stages.map((stage, index) => {
         const previous = funnel.stages[index - 1];
         const isWorst = worst?.to.key === stage.key;
@@ -374,6 +374,8 @@ const RATE_STAGES: { key: FunnelStage["key"]; label: string }[] = [
   { key: "executions", label: "Execução" },
   { key: "first_dm", label: "1ª DM" },
   { key: "button", label: "Botão" },
+  { key: "tapped", label: "Toque" },
+  { key: "clicked", label: "Link" },
 ];
 
 function ComparisonRow({ label, href, counts, max, showBar }: { label: string; href: string | null; counts: FunnelCounts; max: number; showBar: boolean }) {
@@ -397,6 +399,7 @@ function ComparisonRow({ label, href, counts, max, showBar }: { label: string; h
       <ul className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-text-muted">
         {RATE_STAGES.map(({ key, label: stageLabel }) => {
           const stage = funnel.stages.find((item) => item.key === key);
+          if (!stage && (key === "tapped" || key === "clicked")) return null;
           const isWorst = worst?.to.key === key;
           return (
             <li key={key} className="flex items-center gap-1">

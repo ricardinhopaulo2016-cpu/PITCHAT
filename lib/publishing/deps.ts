@@ -1,7 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { decryptToken } from "@/lib/meta/token-crypto";
 import { realInstagramPublisher } from "@/lib/meta/publishing";
-import { schedulePostAdvance } from "@/lib/qstash";
+import { schedulePostAdvance, scheduleReelSnapshots } from "@/lib/qstash";
+import { snapshotDelaysSeconds } from "@/lib/insights/reel-snapshots";
 import type { AdvanceDeps, PostRecord } from "./engine";
 import { releaseMediaFile, type ReleaseMediaDeps } from "./release-media";
 import { mediaKindOf } from "./validate";
@@ -52,6 +53,11 @@ export function buildReleaseMediaDeps(admin: SupabaseClient): ReleaseMediaDeps {
 export function buildAdvanceDeps(admin: SupabaseClient): AdvanceDeps {
   return {
     async onPublished(post) {
+      // Fotos de métricas primeiro e sem depender da limpeza do arquivo: uma falha não pode apagar a outra.
+      if (post.media_type === "REELS") {
+        const snapshots = await scheduleReelSnapshots({ postId: post.id, ages: snapshotDelaysSeconds() });
+        console.info(JSON.stringify({ event: "reel_snapshots_scheduled", postId: post.id, ...snapshots }));
+      }
       const outcome = await releaseMediaFile(buildReleaseMediaDeps(admin), post.media_asset_id);
       console.info(JSON.stringify({ event: "media_file_release", postId: post.id, mediaAssetId: post.media_asset_id, outcome }));
     },

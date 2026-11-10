@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildFunnel, sumFunnel, type FunnelCounts } from "@/lib/metrics/funnel";
 import { formatRate } from "@/lib/metrics/rates";
+import { worstFunnelLoss } from "@/lib/metrics/bottleneck";
 
 function counts(partial: Partial<FunnelCounts>): FunnelCounts {
   return { comments_valid: 0, requests_unique: 0, requests_without_author: 0, executions: 0, first_dm: 0, button: 0, link_button: 0, quick_reply_button: 0, ...partial };
@@ -70,5 +71,28 @@ describe("sumFunnel", () => {
 
   it("lista vazia dá zeros", () => {
     expect(sumFunnel([])).toEqual(counts({}));
+  });
+});
+
+describe("toque e clique no funil", () => {
+  it("sem o dado (antes da migration) o funil não ganha etapas vazias", () => {
+    expect(buildFunnel(counts({ button: 5 })).stages.map((s) => s.key)).not.toContain("tapped");
+  });
+
+  it("toque conta sobre quem recebeu a resposta rápida; clique sobre quem recebeu o link", () => {
+    const c = counts({ requests_unique: 10, executions: 10, first_dm: 10, button: 10, quick_reply_button: 10, link_button: 4, tapped: 5, clicked: 2 });
+    expect(formatRate(stage(c, "tapped").rate!)).toBe("50%");
+    expect(formatRate(stage(c, "clicked").rate!)).toBe("50%");
+    expect(stage(c, "clicked").label).toBe("Abriu o link");
+  });
+
+  it("toque e clique não viram a maior perda operacional", () => {
+    const c = counts({ requests_unique: 10, executions: 10, first_dm: 10, button: 10, quick_reply_button: 10, link_button: 1, tapped: 1, clicked: 0 });
+    expect(worstFunnelLoss(buildFunnel(c))).toBeNull();
+  });
+
+  it("soma toque e clique só quando existem", () => {
+    expect(sumFunnel([counts({ tapped: 2, clicked: 1 }), counts({ tapped: 3, clicked: 0 })])).toMatchObject({ tapped: 5, clicked: 1 });
+    expect(sumFunnel([counts({})]).tapped).toBeUndefined();
   });
 });
